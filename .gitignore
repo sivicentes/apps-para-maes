@@ -1,0 +1,26 @@
+# documentos reais da escola: nome de professora, turma, material dos filhos.
+# o repositorio e PUBLICO - isso nunca pode entrar no historico do git.
+material-escolar/
+*.pdf
+*.docx
+
+# chaves e segredos
+.env
+.env.*
+*.key
+*.pem
+segredos*
+chave*
+
+# dependencias e build
+node_modules/
+dist/
+.wrangler/
+
+# sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# material de origem da passagem de projeto (zips e extracoes)
+rotina-de-estudos/

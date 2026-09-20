@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Semana de Prova</title>
+<meta name="theme-color" content="#2B59E0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  --paper:#EEF3FA; --card:#FFFFFF; --ink:#1B2A4E; --ink2:#56637F; --line:#D3DDEC;
+  --blue:#2B59E0; --on-blue:#FFFFFF; --blue-soft:#E3EAFD;
+  --mark:#FFDF5E; --ok:#15885A; --ok-bg:#DFF5EA; --bad:#CF3640; --bad-bg:#FCE4E6;
+  --shadow:0 2px 0 rgba(27,42,78,.10);
+  --display:"Baloo 2","Trebuchet MS","Segoe UI",system-ui,sans-serif;
+  --body:"Nunito","Segoe UI",system-ui,-apple-system,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#10182B; --card:#1A2440; --ink:#EAF0FF; --ink2:#A7B3D0; --line:#2D3A61;
+    --blue:#86A6FF; --on-blue:#0D1630; --blue-soft:#24325C;
+    --mark:#8A6F00; --ok:#5FD3A2; --ok-bg:#143627; --bad:#FF8A92; --bad-bg:#43191D;
+    --shadow:0 2px 0 rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#10182B; --card:#1A2440; --ink:#EAF0FF; --ink2:#A7B3D0; --line:#2D3A61;
+  --blue:#86A6FF; --on-blue:#0D1630; --blue-soft:#24325C;
+  --mark:#8A6F00; --ok:#5FD3A2; --ok-bg:#143627; --bad:#FF8A92; --bad-bg:#43191D;
+  --shadow:0 2px 0 rgba(0,0,0,.35);
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px);height:100%}
+body{margin:0;min-height:100%;background:var(--paper);color:var(--ink);font-family:var(--body);font-size:17px;line-height:1.5;-webkit-text-size-adjust:100%}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+h1,h2,h3{font-family:var(--display);line-height:1.15;margin:0}
+h1{font-size:1.75rem;font-weight:800}
+h2{font-size:1.35rem;font-weight:700}
+h3{font-size:1.12rem;font-weight:700}
+p{margin:.4em 0}
+.mk{background:linear-gradient(transparent 52%,var(--mark) 52%,var(--mark) 92%,transparent 92%);padding:0 .15em;border-radius:2px}
+#app{max-width:640px;margin:0 auto;padding:14px 16px 110px}
+.muted{color:var(--ink2)}
+.small{font-size:.88rem}
+
+/* cabeçalho */
+.top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.kids{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.chip{border:2px solid var(--line);background:var(--card);border-radius:999px;padding:4px 12px;font-weight:700;font-size:.92rem}
+.chip[aria-pressed="true"]{border-color:var(--ink);background:var(--ink);color:var(--paper)}
+
+/* régua da semana */
+.ruler{display:flex;gap:6px;overflow-x:auto;padding:4px 2px 10px;margin:0 -2px 8px;scrollbar-width:none}
+.ruler::-webkit-scrollbar{display:none}
+.day{flex:0 0 58px;border:2px solid var(--line);background:var(--card);border-radius:14px;padding:6px 2px 8px;text-align:center;position:relative}
+.day .wd{font-size:.74rem;font-weight:700;color:var(--ink2)}
+.day .dn{font-family:var(--display);font-weight:800;font-size:1.3rem;line-height:1.1}
+.day .dots{display:flex;justify-content:center;gap:3px;min-height:9px;margin-top:3px}
+.dot{width:8px;height:8px;border-radius:50%;border:2px solid var(--blue)}
+.dot.f{background:var(--blue)}
+.day.today{border-color:var(--ink)}
+.day[aria-pressed="true"]{background:var(--mark);border-color:var(--ink)}
+.day[aria-pressed="true"] .wd{color:var(--ink)}
+.flag{position:absolute;top:-7px;right:-4px;background:var(--bad);color:#fff;font-size:.62rem;font-weight:800;border-radius:6px;padding:1px 5px}
+
+/* cartões */
+.card{background:var(--card);border:2px solid var(--line);border-radius:18px;padding:14px 16px;margin:10px 0;box-shadow:var(--shadow)}
+.card.tap{display:block;width:100%;text-align:left}
+.card.done{opacity:.72}
+.card.alert{border-color:var(--bad);background:var(--bad-bg)}
+.row{display:flex;align-items:center;gap:10px}
+.row.between{justify-content:space-between}
+.grow{flex:1;min-width:0}
+.tag{display:inline-block;font-size:.76rem;font-weight:800;border-radius:8px;padding:2px 8px;background:var(--blue-soft);color:var(--ink)}
+.tag.rev{background:var(--mark);color:var(--ink)}
+.tag.ok{background:var(--ok-bg);color:var(--ok)}
+.tag.bad{background:var(--bad-bg);color:var(--bad)}
+.check{flex:0 0 30px;height:30px;border-radius:50%;border:2.5px solid var(--line);display:grid;place-items:center;font-weight:800;background:var(--card)}
+.check.on{background:var(--ok);border-color:var(--ok);color:#fff}
+
+/* botões */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:2px solid var(--ink);background:var(--card);border-radius:14px;padding:11px 16px;font-weight:800;min-height:48px;box-shadow:var(--shadow)}
+.btn.pri{background:var(--blue);border-color:var(--blue);color:var(--on-blue)}
+.btn.ghost{border-color:var(--line);box-shadow:none;font-weight:700}
+.btn.danger{border-color:var(--bad);color:var(--bad)}
+.btn.block{display:flex;width:100%}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.link{background:none;border:0;padding:4px 0;color:var(--blue);font-weight:700;text-decoration:underline}
+
+/* formulários */
+label{display:block;font-weight:700;font-size:.92rem;margin:10px 0 4px}
+input[type=text],input[type=password],input[type=date],select,textarea{width:100%;border:2px solid var(--line);background:var(--card);border-radius:12px;padding:10px 12px;min-height:46px}
+textarea{min-height:88px;resize:vertical}
+
+/* passos */
+.step{display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;background:none;border:0;padding:9px 0;border-bottom:1.5px dashed var(--line)}
+.step:last-child{border-bottom:0}
+.step.on span:last-child{text-decoration:line-through;color:var(--ink2)}
+.explain{white-space:pre-wrap;background:var(--blue-soft);border-radius:14px;padding:12px 14px;margin-top:10px}
+
+/* quiz */
+.opt{display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;border:2px solid var(--line);background:var(--card);border-radius:14px;padding:12px 14px;margin:8px 0;font-weight:600;min-height:52px}
+.opt .l{flex:0 0 28px;height:28px;border-radius:8px;background:var(--blue-soft);display:grid;place-items:center;font-weight:800}
+.opt.right{border-color:var(--ok);background:var(--ok-bg)}
+.opt.wrong{border-color:var(--bad);background:var(--bad-bg)}
+.bar{height:10px;border-radius:99px;background:var(--line);overflow:hidden;margin:8px 0 14px}
+.bar i{display:block;height:100%;background:var(--blue);border-radius:99px;transition:width .3s}
+.score{font-family:var(--display);font-size:3.2rem;font-weight:800;line-height:1}
+
+/* navegação */
+.nav{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:2px solid var(--line);padding:6px 10px calc(6px + env(safe-area-inset-bottom,0px));display:flex;justify-content:center;gap:6px;z-index:5}
+.nav button{flex:1;max-width:200px;border:0;background:none;border-radius:12px;padding:6px 4px;font-weight:800;font-size:.86rem;color:var(--ink2);min-height:52px}
+.nav button .ic{display:block;font-size:1.3rem;line-height:1.2}
+.nav button[aria-current="page"]{color:var(--ink);background:var(--mark)}
+@media (prefers-color-scheme:dark){.nav button[aria-current="page"]{color:#fff}}
+
+/* ocupado */
+.veil{position:fixed;inset:0;background:rgba(16,24,43,.55);display:grid;place-items:center;z-index:20;padding:20px}
+.veil .card{max-width:360px;text-align:center}
+.pencil{font-size:2.4rem;display:inline-block;animation:wig 1s ease-in-out infinite}
+@keyframes wig{0%,100%{transform:rotate(-12deg)}50%{transform:rotate(12deg) translateY(-3px)}}
+@media (prefers-reduced-motion:reduce){.pencil{animation:none}.bar i{transition:none}}
+.toast[hidden]{display:none}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--paper);border-radius:12px;padding:10px 16px;font-weight:700;z-index:30;max-width:90%}
+.links h3{margin:4px 0 6px}
+.lk{display:flex;gap:10px;align-items:center;border:2px solid var(--blue);background:var(--blue-soft);color:var(--ink);border-radius:14px;padding:10px 12px;margin:8px 0;text-decoration:none;min-height:52px}
+.lk .ic{font-size:1.5rem}
+.lk .u{display:block;font-size:.76rem;color:var(--ink2);word-break:break-all;user-select:all;-webkit-user-select:all}
+.note{border-left:5px solid var(--mark);padding:6px 12px;margin:10px 0;background:var(--card);border-radius:0 12px 12px 0}
+ul.plain{margin:.3em 0;padding-left:1.2em}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast" class="toast" role="status" hidden></div>
+<input type="file" id="file" accept="image/*,application/pdf,.pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple hidden>
+
+<script>
+"use strict";
+/* ============ utilidades ============ */
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const uid = () => Math.random().toString(36).slice(2, 9);
+const pad = n => String(n).padStart(2, "0");
+const dstr = d => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+const parseD = s => { const [y, m, d] = String(s).split("-").map(Number); return new Date(y, (m || 1) - 1, d || 1); };
+const validD = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s)) && !isNaN(parseD(s));
+const today = () => dstr(new Date());
+const addDays = (s, n) => { const d = parseD(s); d.setDate(d.getDate() + n); return dstr(d); };
+const WD = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+const WDL = ["domingo", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado"];
+const nice = s => { const d = parseD(s); return WDL[d.getDay()] + ", " + d.getDate() + "/" + pad(d.getMonth() + 1); };
+const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const SERIES = ["1º ano", "2º ano", "3º ano", "4º ano", "5º ano", "6º ano", "7º ano", "8º ano", "9º ano"];
+const MAX_CONTENT = 16000;
+function cleanUrl(u) { u = String(u || "").trim().replace(/[)\].,;]+$/, ""); if (/^(www\.|youtu\.?be|[a-z0-9-]+\.(com|org|net|br)\b)/i.test(u)) u = "https://" + u; return /^https?:\/\/[^\s<>"']{4,}$/i.test(u) ? u.slice(0, 500) : ""; }
+const isVideo = u => /youtube\.com|youtu\.be|vimeo\.com/i.test(u);
+const ytId = u => { const m = /(?:youtu\.be\/|[?&]v=|\/shorts\/|\/embed\/|\/live\/)([\w-]{11})/.exec(String(u)); return m ? m[1] : ""; };
+const linksOf = e => (e && Array.isArray(e.links) ? e.links : []);
+const hasVideo = e => linksOf(e).some(l => isVideo(l.url));
+const aiLinks = p => (Array.isArray(p && p.links) ? p.links : []).map(l => ({ url: cleanUrl(l && l.url), label: String((l && l.descricao) || "").slice(0, 80) })).filter(l => l.url).slice(0, 8);
+function parseLinks(txt) { const out = []; String(txt || "").split(/\n+/).forEach(line => { const m = line.match(/(https?:\/\/\S+|www\.\S+|youtu\.be\/\S+)/i); if (!m) return; const url = cleanUrl(m[1]); if (url && !out.some(l => l.url === url)) out.push({ url, label: line.replace(m[1], "").replace(/^[\s:\-–]+|[\s:\-–]+$/g, "").slice(0, 80) }); }); return out.slice(0, 8); }
+function linksHtml(e, title) { const L = linksOf(e); if (!L.length) return ""; return '<div class="links">' + (title ? "<h3>" + esc(title) + "</h3>" : "") + L.map(l => '<a class="lk" href="' + esc(l.url) + '" target="_blank" rel="noopener noreferrer"><span class="ic">' + (isVideo(l.url) ? "▶️" : "🔗") + '</span><span class="grow"><b>' + esc(l.label || (isVideo(l.url) ? "Vídeo que a professora indicou" : "Link que a professora indicou")) + '</b><span class="u">' + esc(l.url) + "</span></span></a>" + (e.id && ytId(l.url) && sample ? (l.read ? '<p class="small" style="margin:-2px 0 8px"><span class="tag ok">vídeo já entrou no material</span></p>' : '<button class="btn block" style="margin:-2px 0 10px" data-a="video" data-id="' + e.id + '" data-u="' + esc(l.url) + '">🎬 Ler este vídeo para o quiz</button>') : "")).join("") + "</div>"; }
+
+/* ============ estado salvo no aparelho ============ */
+const KEY = "semana-de-prova:v1";
+let storageOk = true;
+function load() {
+  try { const raw = localStorage.getItem(KEY); if (raw) { const s = JSON.parse(raw); if (s && Array.isArray(s.kids)) return s; } }
+  catch (e) { storageOk = false; }
+  return { v: 1, kids: [], active: null, settings: { minutes: 45, weekends: true } };
+}
+let S = load();
+function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { storageOk = false; } }
+const kid = () => S.kids.find(k => k.id === S.active) || null;
+const examOf = id => kid()?.exams.find(e => e.id === id) || null;
+const sessOf = id => kid()?.sessions.find(s => s.id === id) || null;
+
+/* ============ estado da tela ============ */
+const ui = { files: [], tab: "hoje", day: today(), screen: null, arg: null, busy: null, toast: null, form: {}, quiz: null, explainLive: "" };
+var sample = null, limits = null, aiChecked = false, ctl = null;
+const quizJobs = {};
+
+/* ============ IA: Gemini (chave guardada só neste aparelho, fora do backup) ============ */
+const GKEY = "semana-de-prova:gemini";
+const GAPI = "https://generativelanguage.googleapis.com/v1beta/";
+const GDEFAULT = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-flash-latest", "gemini-2.5-flash"];
+let G = (() => { try { return JSON.parse(localStorage.getItem(GKEY)) || {}; } catch (e) { return {}; } })();
+const saveG = () => { try { localStorage.setItem(GKEY, JSON.stringify(G)); } catch (e) {} };
+const b64 = blob => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1]); r.onerror = no; r.readAsDataURL(blob); });
+function rankModels(list) {
+  const ok = (list || []).filter(m => (m.supportedGenerationMethods || []).includes("generateContent")).map(m => String(m.name).replace(/^models\//, ""))
+    .map(n => ({ n, m: /^gemini-(\d+(?:\.\d+)?)-flash(-lite)?$/.exec(n) })).filter(x => x.m);
+  ok.sort((a, b) => (!!a.m[2] - !!b.m[2]) || (parseFloat(b.m[1]) - parseFloat(a.m[1])));
+  return ok.map(x => x.n).slice(0, 5);
+}
+async function connectGemini(key) {
+  let res; try { res = await fetch(GAPI + "models?pageSize=200", { headers: { "x-goog-api-key": key } }); } catch (e) { throw { code: "blocked" }; }
+  let models = [];
+  if (res.ok) models = rankModels((await res.json()).models);
+  else if (res.status === 429) throw { code: "rate_limited" };
+  else {
+    // algumas chaves novas (AQ.) falham na listagem mas funcionam na geração: testa de verdade antes de recusar
+    const err = await res.json().catch(() => ({})); const prev = G; G = { key, models: GDEFAULT, model: null };
+    try { await gemini("Responda apenas: ok", {}, false); } catch (e) { G = prev; throw e.code === "bad_key" ? { code: "bad_key", message: "erro " + res.status + ": " + ((err.error && err.error.message) || "sem detalhe").slice(0, 140) } : e; }
+    models = GDEFAULT;
+  }
+  G = { key, models: models.length ? models : GDEFAULT, model: null }; saveG(); sample = makeSample();
+}
+function parseLoose(t) {
+  t = String(t || "").trim(); try { return JSON.parse(t); } catch (e) {}
+  const f = /```(?:json)?\s*([\s\S]*?)```/.exec(t); if (f) { try { return JSON.parse(f[1]); } catch (e) {} }
+  const a = t.search(/[{\[]/), z = Math.max(t.lastIndexOf("}"), t.lastIndexOf("]")); if (a >= 0 && z > a) { try { return JSON.parse(t.slice(a, z + 1)); } catch (e) {} }
+  throw { code: "invalid_json", text: t };
+}
+async function gemini(prompt, o, wantJson) {
+  const parts = []; if (o.video) parts.push({ file_data: { file_uri: o.video } });
+  const imgs = o.images ? (Array.isArray(o.images) ? o.images : [o.images]) : [];
+  for (const im of imgs) parts.push({ inline_data: { mime_type: im.type || "image/jpeg", data: await b64(im) } });
+  parts.push({ text: prompt });
+  const body = JSON.stringify({ contents: [{ role: "user", parts }], generationConfig: wantJson ? { responseMimeType: "application/json" } : {} });
+  const cands = [...new Set([G.model].concat(G.models || [], GDEFAULT).filter(Boolean))].slice(0, 4); let last = { code: "upstream_error" }, throttled = false;
+  for (const m of cands) {
+    let res; try { res = await fetch(GAPI + "models/" + m + ":generateContent", { method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": G.key }, body, signal: o.signal }); }
+    catch (e) { throw { code: e && e.name === "AbortError" ? "cancelled" : "offline" }; }
+    if (res.ok) {
+      const d = await res.json(); const c = d.candidates && d.candidates[0];
+      const text = ((c && c.content && c.content.parts) || []).filter(p => !p.thought).map(p => p.text || "").join("").trim();
+      if (!text) throw { code: (d.promptFeedback && d.promptFeedback.blockReason) || (c && /SAFETY|PROHIBITED|BLOCK/.test(c.finishReason || "")) ? "refused" : "empty_completion" };
+      if (G.model !== m && !throttled) { G.model = m; saveG(); }
+      return text;
+    }
+    const err = await res.json().catch(() => ({})); const msg = (err.error && err.error.message) || "";
+    if (res.status === 401 || res.status === 403 || /api key/i.test(msg)) throw { code: "bad_key", message: "erro " + res.status + ": " + msg.slice(0, 140) };
+    if (res.status === 429) { last = { code: "rate_limited" }; throttled = true; continue; }
+    if (res.status === 404 || res.status >= 500 || /model|not supported|not found/i.test(msg)) { last = { code: "upstream_error" }; continue; }
+    throw { code: o.video ? "video_failed" : "upstream_error", message: msg };
+  }
+  throw last;
+}
+function makeSample() {
+  const f = async (prompt, o = {}) => { const text = await gemini(prompt, o, false); if (o.onText) o.onText({ text, delta: text }); return { text, truncated: false }; };
+  f.json = async (prompt, o = {}) => parseLoose(await gemini(prompt, o, true));
+  f.limits = async () => ({ images: { maxCount: 6 } });
+  return f;
+}
+sample = G.key ? makeSample() : null; limits = { images: { maxCount: 6 } }; aiChecked = true;
+const canImages = () => !!sample;
+const imgMax = () => (limits && limits.images && limits.images.maxCount) || 3;
+const ERR = {
+  bad_key: "A chave do Gemini não foi aceita. Confira em Pais se ela foi colada inteira.",
+  offline: "Sem conexão com o Gemini. Confira a internet e tente de novo.",
+  blocked: "O navegador bloqueou a conexão com o Gemini. Isso acontece se o app for aberto dentro do Claude ou de um visualizador de arquivos: abra pelo link do GitHub Pages (ou baixe o arquivo e abra no Chrome).",
+  rate_limited: "O limite gratuito por minuto foi atingido. Espere um minutinho e tente de novo.",
+  images_unavailable: "Não consegui enviar as fotos. Use “Colar texto” no lugar.",
+  image_rejected: "Não consegui usar uma das fotos. Tire outra (JPG ou PNG) e tente de novo.",
+  prompt_too_large: "Material grande demais para ler de uma vez. Envie menos páginas por vez.",
+  refused: "A IA não pôde responder a esse material. Tente com outras fotos.",
+  video_failed: "Não consegui assistir a esse vídeo. Ele precisa ser público no YouTube (privado ou não listado não funciona).",
+};
+const errMsg = e => ((e && ERR[e.code]) || "Não deu certo desta vez. Tente de novo.") + (e && e.code === "bad_key" && e.message ? " (" + e.message + ")" : "");
+function confirmBox(msg, yes, label) { ui.confirm = { msg, yes, label }; }
+function busy(msg, sub) { ui.busy = { msg, sub: sub || "" }; render(); }
+function idle() { ui.busy = null; ctl = null; render(); }
+function toast(t) { const el = $("#toast"); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { el.hidden = true; }, Math.max(4200, String(t).length * 70)); }
+async function askText(prompt, opts = {}) { ctl = new AbortController(); const r = await sample(prompt, { signal: ctl.signal, ...opts }); return r.text; }
+async function askJSON(prompt, opts = {}) { ctl = new AbortController(); return await sample.json(prompt, { signal: ctl.signal, ...opts }); }
+
+/* ============ arquivos: fotos e PDF ============ */
+async function shrink(file) {
+  try {
+    const bmp = await createImageBitmap(file);
+    const sc = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+    if (sc === 1 && file.size < 1.5e6) { bmp.close && bmp.close(); return file; }
+    const c = document.createElement("canvas"); c.width = Math.round(bmp.width * sc); c.height = Math.round(bmp.height * sc);
+    c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height); bmp.close && bmp.close();
+    const blob = await new Promise(r => c.toBlob(r, "image/jpeg", 0.85));
+    return blob || file;
+  } catch (e) { return file; }
+}
+function loadScript(src) { return new Promise((ok, no) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = () => no(new Error("script")); document.head.appendChild(s); }); }
+async function pdfParts(file) {
+  const base = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
+  if (!window.pdfjsLib) { await loadScript(base + "pdf.min.js"); await loadScript(base + "pdf.worker.min.js"); }
+  const lib = window.pdfjsLib; lib.GlobalWorkerOptions.workerSrc = base + "pdf.worker.min.js";
+  const doc = await lib.getDocument({ data: await file.arrayBuffer(), isEvalSupported: false }).promise;
+  const n = Math.min(doc.numPages, 12); let text = "", linkText = ""; const pages = [];
+  for (let i = 1; i <= n; i++) { const p = await doc.getPage(i); pages.push(p); let urls = []; try { urls = (await p.getAnnotations()).map(a => a && a.url).filter(Boolean); } catch (e) {} if (urls.length) linkText += "\nLinks na página " + i + ": " + [...new Set(urls)].join(" , "); const tc = await p.getTextContent(); text += "\n[Página " + i + "]\n" + tc.items.map(x => x.str).join(" "); }
+  if (text.replace(/\s+/g, "").length > 120 * n) return { text: (text + linkText).trim(), images: [] };
+  const images = [];
+  for (const p of pages) {
+    const v0 = p.getViewport({ scale: 1 }); const v = p.getViewport({ scale: Math.min(2.2, 1400 / v0.width) });
+    const c = document.createElement("canvas"); c.width = v.width; c.height = v.height;
+    await p.render({ canvasContext: c.getContext("2d"), viewport: v }).promise;
+    const b = await new Promise(r => c.toBlob(r, "image/jpeg", 0.85)); if (b) images.push(b);
+  }
+  return { text: linkText.trim(), images };
+}
+const unxml = t => t.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#(\d+);/g, (m, n) => String.fromCodePoint(+n)).replace(/&amp;/g, "&");
+async function docxParts(file) {
+  if (!window.JSZip) await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js");
+  const zip = await window.JSZip.loadAsync(await file.arrayBuffer());
+  const doc = zip.file("word/document.xml"); if (!doc) throw new Error("docx");
+  let xml = await doc.async("string"); const rels = {}; const rf = zip.file("word/_rels/document.xml.rels");
+  if (rf) (await rf.async("string")).replace(/<Relationship\b[^>]*>/g, m => { const id = /Id="([^"]+)"/.exec(m), t = /Target="([^"]+)"/.exec(m); if (id && t && /hyperlink/i.test(m)) rels[id[1]] = unxml(t[1]); return m; });
+  xml = xml.replace(/<w:hyperlink\b[^>]*r:id="([^"]+)"[^>]*>([\s\S]*?)<\/w:hyperlink>/g, (m, id, inner) => inner + (rels[id] ? "<w:r><w:t> (link: " + rels[id].replace(/&/g, "&amp;").replace(/</g, "") + " ) </w:t></w:r>" : ""));
+  xml = xml.replace(/<w:tbl>[\s\S]*?<\/w:tbl>/g, t => t.replace(/<\/w:p>/g, " ").replace(/<\/w:tc>/g, " | ").replace(/<\/w:tr>/g, "\n"));
+  const text = unxml(xml.replace(/<w:tab\/>/g, "\t").replace(/<w:br[^>]*\/>/g, "\n").replace(/<\/w:p>/g, "\n").replace(/<[^>]+>/g, "")).replace(/[ \t]+/g, " ").replace(/\n\s*\n+/g, "\n").trim();
+  const images = [];
+  for (const f of zip.file(/^word\/media\/[^/]+\.(jpe?g|png)$/i).slice(0, 8)) {
+    const u8 = await f.async("uint8array"); if (u8.length < 15000) continue;
+    images.push(await shrink(new Blob([u8], { type: /png$/i.test(f.name) ? "image/png" : "image/jpeg" })));
+  }
+  return { text, images };
+}
+const isDocx = f => /\.docx$/i.test(f.name || "") || (f.type || "").includes("wordprocessingml");
+const isPdf = f => f.type === "application/pdf" || /\.pdf$/i.test(f.name || "");
+async function gather(files) {
+  let text = ""; const images = []; const failed = [];
+  for (const f of files) {
+    if (isPdf(f) || isDocx(f)) {
+      try { const r = isPdf(f) ? await pdfParts(f) : await docxParts(f); if (r.text) text += (text ? "\n\n" : "") + "[Arquivo: " + (f.name || "documento") + "]\n" + r.text; images.push(...r.images); } catch (e) { failed.push(f.name || "arquivo"); }
+    } else if ((f.type || "").startsWith("image/")) images.push(await shrink(f));
+    else failed.push(f.name || "arquivo");
+  }
+  return { text: text.trim(), images, failed };
+}
+function pickFiles() {
+  return new Promise(res => { const inp = $("#file"); inp.value = ""; inp.onchange = () => res(Array.from(inp.files || [])); inp.click(); });
+}
+
+/* ============ 1. ler o comunicado ============ */
+function noticePrompt(extra) {
+  const t = today();
+  return "Você está lendo o comunicado de provas de uma escola brasileira (nas imagens e/ou no texto abaixo). Hoje é " + nice(t) + " (" + t + ").\n" +
+    "Extraia cada prova ou avaliação com data. Responda SOMENTE com JSON neste formato:\n" +
+    '{"provas":[{"materia":"Matemática","data":"AAAA-MM-DD","conteudo":"assuntos que caem, em uma ou duas frases","paginas":"páginas, capítulos ou materiais indicados para estudar (ou vazio)","links":[{"url":"https://...","descricao":"o que é, em poucas palavras"}]}]}\n' +
+    "Em \"links\" coloque os endereços (YouTube, sites, formulários) que a professora indicou para AQUELA prova, copiados caractere por caractere, sem corrigir nem completar; se não houver, use []. " +
+    "Regras: se o ano não aparecer, escolha a data futura mais próxima de hoje. Se a data estiver ilegível, use \"\". Não invente provas nem conteúdos que não estejam escritos. Mantenha os números de página exatamente como aparecem." +
+    (extra ? "\n\nTEXTO DOS COMUNICADOS (pode haver mais de um arquivo, de professoras diferentes; junte tudo):\n" + extra.slice(0, 30000) : "");
+}
+async function readNotice(files, pasted) {
+  if (!sample) return toast("A leitura automática precisa da IA ligada (aba Pais). Por enquanto, adicione as provas na mão.");
+  busy("Abrindo o comunicado…");
+  try {
+    const g = files.length ? await gather(files) : { text: "", images: [], failed: [] };
+    const text = [pasted || "", g.text].filter(Boolean).join("\n");
+    if (g.images.length && !canImages()) { idle(); return toast(ERR.images_unavailable); }
+    if (!text && !g.images.length) { idle(); return toast(g.failed.length ? "Não consegui abrir: " + g.failed.join(", ") + ". Use foto, PDF ou Word (.docx), ou tire um print." : "Escolha uma foto, um PDF, um Word ou cole o texto."); }
+    const max = Math.max(1, imgMax()); const found = [];
+    const batches = g.images.length ? [] : [[]];
+    for (let i = 0; i < g.images.length; i += max) batches.push(g.images.slice(i, i + max));
+    for (let b = 0; b < batches.length; b++) {
+      busy("Lendo o comunicado…", batches.length > 1 ? "Parte " + (b + 1) + " de " + batches.length : "Isso leva até um minuto.");
+      const opts = batches[b].length ? { images: batches[b] } : {};
+      const r = await askJSON(noticePrompt(b === 0 ? text : ""), opts);
+      const list = Array.isArray(r) ? r : (r && r.provas) || [];
+      for (const p of list) if (p && p.materia) found.push(p);
+    }
+    const k = kid(); let added = 0, merged = 0;
+    for (const p of found) {
+      const date = validD(p.data) ? p.data : "";
+      const dup = k.exams.find(e => e.subject.toLowerCase() === String(p.materia).toLowerCase() && e.date === date);
+      if (dup) { const nl = aiLinks(p).filter(l => !linksOf(dup).some(x => x.url === l.url)); if (nl.length) { dup.links = linksOf(dup).concat(nl).slice(0, 8); merged++; } continue; }
+      k.exams.push({ id: uid(), subject: String(p.materia).slice(0, 60), date, topics: String(p.conteudo || "").slice(0, 800), pages: String(p.paginas || "").slice(0, 300), links: aiLinks(p), content: "", nPages: 0, misses: [], asked: [] });
+      added++;
+    }
+    k.exams.sort((a, b) => (a.date || "9").localeCompare(b.date || "9")); save(); ui.screen = null; ui.files = []; ui.form = {}; idle();
+    if (g.failed.length) return toast((added ? added + " prova(s) encontradas, mas n" : "N") + "ão consegui abrir: " + g.failed.join(", ") + ".");
+    toast(added ? added + (added === 1 ? " prova encontrada. Confira as datas!" : " provas encontradas. Confira as datas!") : merged ? "Links novos adicionados às provas que já existiam." : "Não achei provas novas nesse material.");
+  } catch (e) { idle(); if (e.code !== "cancelled") toast(errMsg(e)); }
+}
+
+/* ============ 2. ler as páginas de estudo ============ */
+function pagesPrompt(ex, extraText) {
+  return "As imagens (e/ou o texto abaixo) são páginas do material de estudo de " + ex.subject + ", de um aluno do " + kid().grade + " no Brasil, para uma prova sobre: " + (ex.topics || "(assunto não informado)") + ".\n" +
+    "Faça uma transcrição condensada e FIEL de tudo que é conteúdo de estudo: conceitos, definições, regras, exemplos resolvidos, fórmulas, datas, nomes, vocabulário, e descreva em uma frase mapas, gráficos ou figuras importantes. Ignore enfeites e instruções de atividade sem conteúdo.\n" +
+    "Não acrescente nada que não esteja nas páginas. Texto simples, sem markdown, com um subtítulo por página (\"Página 42\" se o número aparecer). Se uma foto estiver ilegível, escreva FOTO ILEGÍVEL no lugar dela." +
+    (extraText ? "\n\nTEXTO:\n" + extraText.slice(0, 40000) : "");
+}
+async function readPages(examId) {
+  const ex = examOf(examId); if (!ex) return;
+  if (!sample) return toast("Para ler as páginas, ligue a IA na aba Pais.");
+  const files = await pickFiles(); if (!files.length) return;
+  busy("Preparando as páginas…");
+  try {
+    const g = await gather(files);
+    if (g.images.length && !canImages()) { idle(); return toast(ERR.images_unavailable); }
+    if (!g.text && !g.images.length) { idle(); return toast(g.failed.length ? "Não consegui abrir: " + g.failed.join(", ") + ". Envie fotos das páginas." : "Nenhuma página para ler."); }
+    let out = "", count = 0, unreadable = 0;
+    if (g.text) { busy("Lendo o material…"); out += (g.text.length > 5000 ? await askText(pagesPrompt(ex, g.text)) : g.text) + "\n"; count += (g.text.match(/\[Página/g) || [1]).length; }
+    const per = Math.min(3, Math.max(1, imgMax()));
+    for (let i = 0; i < g.images.length; i += per) {
+      const part = g.images.slice(i, i + per);
+      busy("Lendo as páginas de " + ex.subject + "…", "Página " + (i + 1) + (part.length > 1 ? " a " + (i + part.length) : "") + " de " + g.images.length);
+      const t = await askText(pagesPrompt(ex, ""), { images: part });
+      unreadable += (t.match(/FOTO ILEG[IÍ]VEL/gi) || []).length; out += t + "\n\n"; count += part.length;
+    }
+    ex.content = (ex.content ? ex.content + "\n\n" : "") + out.trim(); let cut = false;
+    if (ex.content.length > MAX_CONTENT) { ex.content = ex.content.slice(0, MAX_CONTENT); cut = true; }
+    ex.nPages = (ex.nPages || 0) + count; save(); idle();
+    toast(unreadable ? unreadable + " foto(s) ficaram ilegíveis. Tire de novo, com luz e sem cortar a página." : cut ? "Material bem grande: guardei a parte principal." : count + " página(s) lidas!");
+  } catch (e) { idle(); if (e.code !== "cancelled") toast(errMsg(e)); }
+}
+
+/* ============ 2b. vídeo do YouTube ============ */
+async function readVideo(examId, url) {
+  const ex = examOf(examId), id = ytId(url); if (!ex || !id) return;
+  if (!sample) return toast("Para ler o vídeo, ligue a IA na aba Pais.");
+  busy("Assistindo ao vídeo de " + ex.subject + "…", "Vídeos longos podem levar alguns minutos.");
+  try {
+    const t = await askText("Este é um vídeo que a professora de " + ex.subject + " indicou para um aluno do " + kid().grade + " (Brasil) estudar para uma prova sobre: " + (ex.topics || "(assunto não informado)") + ".\n" +
+      "Assista ao vídeo inteiro (imagem e áudio) e escreva um RESUMO DE ESTUDO fiel, em português, em texto simples sem markdown: 1) tema do vídeo em uma frase; 2) o que é ensinado, em tópicos; 3) se for aula de idioma, a lista de palavras e frases ensinadas, cada uma com a tradução, incluindo o que aparece escrito na tela; 4) exemplos e perguntas e respostas que aparecem. Se for música, não transcreva a letra inteira: liste o vocabulário e as estruturas que ela ensina. Não invente nada que não esteja no vídeo.",
+      { video: "https://www.youtube.com/watch?v=" + id });
+    const l = linksOf(ex).find(x => x.url === url); if (l) l.read = true;
+    ex.content = ((ex.content ? ex.content + "\n\n" : "") + "VÍDEO INDICADO PELA PROFESSORA" + (l && l.label ? " (" + l.label + ")" : "") + ":\n" + t.trim()).slice(0, MAX_CONTENT);
+    ex.nPages = (ex.nPages || 0) + 1; save(); idle(); toast("Vídeo lido! Já vale para as explicações e os quizzes.");
+  } catch (e) { idle(); if (e.code !== "cancelled") toast(errMsg(e)); }
+}
+
+/* ============ 3. roteiro ============ */
+function studyDays(fromS, toS) { const out = []; for (let d = fromS; d <= toS; d = addDays(d, 1)) { const w = parseD(d).getDay(); if (S.settings.weekends || (w !== 0 && w !== 6)) out.push(d); } return out; }
+function mkSession(ex, date, type, title, minutes, steps) {
+  return { id: uid(), examId: ex.id, date, type, title: String(title).slice(0, 90), minutes: Math.max(10, Math.min(60, Number(minutes) || 25)), steps: steps.slice(0, 5).map(t => ({ t: String(t).slice(0, 220), done: false })), done: false, explain: "", score: null };
+}
+function basicSessions(ex, t, load) {
+  const days = studyDays(t, addDays(ex.date, -1)); if (!days.length) return [];
+  const want = Math.min(days.length, ex.content.length > 6000 ? 3 : 2); const out = []; const eve = days[days.length - 1];
+  const where = ex.pages ? " (" + ex.pages + ")" : ""; const lk = linksOf(ex).length ? [(hasVideo(ex) ? "Assista ao vídeo" : "Acesse o link") + " que a professora indicou (botão no alto da tela)."] : [];
+  const pick = days.slice(0, -1).sort((a, b) => (load[a] || 0) - (load[b] || 0) || a.localeCompare(b)).slice(0, want - 1).sort();
+  pick.forEach((d, i) => { load[d] = (load[d] || 0) + 25; out.push(mkSession(ex, d, "estudo", ex.subject + ": estudar parte " + (i + 1), 25, (i === 0 ? lk : []).concat(["Leia com calma o material" + where + ".", "Escreva no caderno 3 coisas importantes que você leu.", "Explique em voz alta para alguém o que entendeu."]))); });
+  load[eve] = (load[eve] || 0) + 20;
+  out.push(mkSession(ex, eve, "revisao", ex.subject + ": revisão para a prova", 20, (pick.length ? [] : lk).concat(["Releia suas anotações e os títulos do material" + where + ".", "Refaça um exercício que você achou difícil.", "Faça o quiz de revisão."])));
+  return out;
+}
+function planPrompt(exams, t, days, busyDays) {
+  return "Monte um roteiro de estudos para uma criança do " + kid().grade + " (Brasil) em semana de provas. Hoje é " + nice(t) + " (" + t + ").\n" +
+    "Dias em que ela pode estudar: " + days.map(d => d + " (" + WD[parseD(d).getDay()] + ")").join(", ") + ". No máximo " + S.settings.minutes + " minutos de estudo por dia, somando tudo.\n" +
+    (busyDays && Object.keys(busyDays).length ? "Minutos JÁ ocupados por outras matérias (desconte do limite do dia): " + Object.keys(busyDays).sort().map(d => d + ": " + busyDays[d] + " min").join(", ") + ".\n" : "") + "\nPROVAS:\n" +
+    exams.map(e => "- id " + e.id + " | " + e.subject + " | prova em " + e.date + " | cai: " + (e.topics || "não informado") + " | material: " + (e.pages || "não informado") + (linksOf(e).length ? " | a professora indicou " + linksOf(e).length + " link(s): " + linksOf(e).map(l => (isVideo(l.url) ? "vídeo" : "site") + (l.label ? " (" + l.label + ")" : "")).join(", ") : "") + (e.content ? " | trecho do material: " + e.content.slice(0, 1100).replace(/\s+/g, " ") : "")).join("\n") +
+    "\n\nREGRAS:\n1. Toda prova precisa de pelo menos 1 sessão antes do dia dela. Nunca marque sessão no dia da prova nem depois.\n2. Na véspera de cada prova marque uma sessão do tipo \"revisao\" dessa matéria. As outras são do tipo \"estudo\".\n3. Sessões de 15 a 30 minutos. Priorize a prova mais próxima; divida matérias com muito conteúdo em partes, cada parte com um foco diferente.\n4. Se o tempo do dia não der para tudo, encurte as sessões em vez de deixar uma prova sem estudo.\n5. Cada sessão tem de 2 a 4 passos concretos, começando com verbo, em linguagem simples para a idade, citando as páginas e os assuntos reais. Não inclua \"fazer o quiz\" como passo (o aplicativo já oferece).\n6. Se a prova tem link indicado pela professora, a PRIMEIRA sessão dela precisa ter um passo para assistir/acessar, dizendo que o botão do link está no alto da tela (não escreva o endereço). Reserve tempo para isso.\n7. O título diz a matéria e o foco, por exemplo \"Ciências: cadeia alimentar\".\n\n" +
+    'Responda SOMENTE com JSON: {"sessoes":[{"prova_id":"","data":"AAAA-MM-DD","tipo":"estudo","titulo":"","minutos":25,"passos":["",""]}]}';
+}
+async function makePlan(onlyId) {
+  const k = kid(); const t = today(); onlyId = typeof onlyId === "string" ? onlyId : null;
+  const exams = k.exams.filter(e => validD(e.date) && e.date > t && (!onlyId || e.id === onlyId));
+  if (!exams.length) return toast(onlyId ? "Essa prova precisa de uma data a partir de amanhã para entrar no roteiro." : k.exams.length ? "Nenhuma prova com data a partir de amanhã. Confira as datas." : "Adicione as provas primeiro.");
+  const kept = k.sessions.filter(s => s.done || (onlyId && s.examId !== onlyId)); const busyDays = {};
+  if (onlyId) kept.forEach(s => { if (!s.done && s.date >= t) busyDays[s.date] = (busyDays[s.date] || 0) + s.minutes; });
+  const last = exams.reduce((m, e) => e.date > m ? e.date : m, t); const days = studyDays(t, addDays(last, -1));
+  if (!days.length) return toast("Não sobrou dia de estudo antes das provas. Em Pais, ligue o fim de semana.");
+  let sessions = [], usedAI = false;
+  if (sample) {
+    busy(onlyId ? "Montando o roteiro de " + exams[0].subject + "…" : "Montando o roteiro da semana…", "Isso leva até um minuto.");
+    try {
+      const r = await askJSON(planPrompt(exams, t, days, busyDays), { cache: false });
+      for (const s of (r && r.sessoes) || []) {
+        const ex = exams.find(e => e.id === s.prova_id); if (!ex || !validD(s.data)) continue;
+        let d = s.data; if (d >= ex.date) d = addDays(ex.date, -1); if (d < t) continue;
+        const steps = (Array.isArray(s.passos) ? s.passos : []).filter(x => typeof x === "string" && x.trim());
+        if (!steps.length) continue;
+        sessions.push(mkSession(ex, d, s.tipo === "revisao" ? "revisao" : "estudo", s.titulo || ex.subject, s.minutos, steps));
+      }
+      usedAI = sessions.length > 0;
+    } catch (e) { if (e.code === "cancelled") return idle(); toast(errMsg(e) + " Montei um roteiro simples no lugar."); }
+  }
+  const load = Object.assign({}, busyDays); sessions.forEach(s => load[s.date] = (load[s.date] || 0) + s.minutes);
+  for (const ex of exams) if (!sessions.some(s => s.examId === ex.id)) sessions.push(...basicSessions(ex, t, load));
+  k.sessions = kept.concat(sessions).sort((a, b) => a.date.localeCompare(b.date) || (a.type === "revisao") - (b.type === "revisao"));
+  k.planAt = t; save(); ui.tab = "hoje"; ui.day = t; ui.screen = null; idle();
+  if (usedAI || !sample) toast(onlyId ? "Roteiro de " + exams[0].subject + " pronto!" : "Roteiro pronto!");
+}
+
+/* ============ 4. explicação e quiz ============ */
+function sessionContext(s, ex) {
+  return "Matéria: " + ex.subject + " (" + kid().grade + ", Brasil). Prova em " + ex.date + ".\nFoco desta sessão: " + s.title + ". Passos: " + s.steps.map(x => x.t).join(" | ") + "\nAssuntos da prova: " + (ex.topics || "não informado") +
+    (ex.content ? "\n\nMATERIAL DO ALUNO (use como fonte principal):\n" + ex.content : "\n\n(O material não foi enviado: baseie-se só nos assuntos, no nível da série.)");
+}
+async function explain(sid) {
+  const s = sessOf(sid), ex = s && examOf(s.examId); if (!s || !ex) return;
+  if (!sample) return toast("Para explicar, ligue a IA na aba Pais.");
+  ui.explainLive = "Pensando…"; render(); ctl = new AbortController();
+  try {
+    const r = await sample("Explique para uma criança o conteúdo desta sessão de estudo, como uma professora paciente e animada.\n" + sessionContext(s, ex) +
+      "\n\nFormato: texto simples em português do Brasil, SEM markdown e sem asteriscos. Comece com uma frase que resume a ideia principal. Depois de 3 a 6 tópicos curtos começando com \"• \", com exemplos do dia a dia. Termine com uma dica para lembrar na hora da prova. No máximo 180 palavras. Não invente fatos fora do material.",
+      { signal: ctl.signal, onText: ({ text }) => { ui.explainLive = text; const el = $("#explain"); if (el) el.textContent = text; } });
+    s.explain = r.text; ui.explainLive = ""; save(); render();
+  } catch (e) { ui.explainLive = ""; render(); if (e.code !== "cancelled") toast(errMsg(e)); }
+}
+function quizPrompt(s, ex) {
+  const n = s.type === "revisao" ? 8 : 5;
+  const misses = ex.misses.slice(-8).map(m => m.topic).filter(Boolean);
+  return "Crie " + n + " perguntas de múltipla escolha para uma criança treinar depois de estudar.\n" + sessionContext(s, ex) +
+    (s.type === "revisao" ? "\n\nÉ a REVISÃO da véspera: cubra todos os assuntos da prova." : "") +
+    (misses.length ? "\nEla errou antes perguntas sobre: " + [...new Set(misses)].join("; ") + ". Inclua reforço desses pontos com perguntas novas." : "") +
+    (ex.asked.length ? "\nNão repita estas perguntas já feitas: " + ex.asked.slice(-20).join(" | ") : "") +
+    "\n\nRegras: linguagem clara para a idade; 4 opções por pergunta, só uma correta, erradas plausíveis; misture perguntas de lembrar com perguntas de aplicar em uma situação; nada de pegadinha; a explicação ensina em 1 ou 2 frases por que a resposta é aquela; baseie-se no material, sem cobrar o que não está nele.\n" +
+    'Responda SOMENTE com JSON: {"perguntas":[{"pergunta":"","opcoes":["","","",""],"correta":0,"explicacao":"","assunto":"tema em poucas palavras"}]}';
+}
+function fetchQuiz(sid, fresh) {
+  if (!fresh && quizJobs[sid]) return quizJobs[sid];
+  const s = sessOf(sid), ex = s && examOf(s.examId);
+  const job = (async () => {
+    const r = await sample.json(quizPrompt(s, ex), { cache: false });
+    const qs = [];
+    for (const q of (r && r.perguntas) || []) {
+      if (!q || !q.pergunta || !Array.isArray(q.opcoes) || q.opcoes.length < 2) continue;
+      const ci = Number(q.correta); if (!(ci >= 0 && ci < q.opcoes.length)) continue;
+      const opts = shuffle(q.opcoes.map((t, i) => ({ t: String(t), ok: i === ci })));
+      qs.push({ q: String(q.pergunta), opts, why: String(q.explicacao || ""), topic: String(q.assunto || "") });
+    }
+    if (!qs.length) throw { code: "invalid_json" };
+    return qs;
+  })();
+  job.catch(() => { if (quizJobs[sid] === job) delete quizJobs[sid]; });
+  quizJobs[sid] = job; return job;
+}
+async function startQuiz(sid) {
+  if (!sample) return toast("Para o quiz, ligue a IA na aba Pais.");
+  busy("Preparando suas perguntas…", "Só um pouquinho!");
+  try { const qs = await fetchQuiz(sid); delete quizJobs[sid]; ui.quiz = { sid, qs, i: 0, picked: null, right: 0, wrong: [] }; ui.screen = "quiz"; idle(); }
+  catch (e) { delete quizJobs[sid]; idle(); toast(errMsg(e)); }
+}
+function finishQuiz() {
+  const z = ui.quiz, s = sessOf(z.sid), ex = s && examOf(s.examId);
+  if (s && ex) {
+    s.score = { right: z.right, total: z.qs.length, at: today() }; s.done = true; s.steps.forEach(x => x.done = true);
+    ex.asked = ex.asked.concat(z.qs.map(q => q.q.slice(0, 90))).slice(-40);
+    ex.misses = ex.misses.concat(z.wrong).slice(-20); save();
+  }
+  ui.screen = "result"; render();
+}
+
+/* ============ telas ============ */
+function header(title) {
+  const k = kid();
+  return '<div class="top"><h1><span class="mk">' + esc(title) + '</span></h1><div class="kids">' +
+    S.kids.map(x => '<button class="chip" data-a="kid" data-id="' + x.id + '" aria-pressed="' + (x.id === S.active) + '">' + esc(x.name) + "</button>").join("") +
+    (k ? '<button class="chip" data-a="newkid" aria-label="Adicionar criança">＋</button>' : "") + "</div></div>";
+}
+function aiBanner() {
+  if (sample) return "";
+  return '<div class="note small"><b>Falta ligar a inteligência artificial.</b> Sem ela dá para cadastrar provas e usar um roteiro simples. Para ler fotos e vídeos, explicar e fazer quiz, cole a chave do Gemini. <button class="link" data-a="tab" data-t="pais">Ligar agora</button></div>';
+}
+function vWelcome() {
+  const f = ui.form;
+  return '<h1>Bora estudar para a <span class="mk">semana de prova</span>?</h1><p class="muted">Você envia o comunicado da escola e as páginas do livro. O app monta o roteiro de cada dia e faz perguntas para treinar.</p>' +
+    '<div class="card"><h2>Quem vai estudar?</h2><label for="kname">Nome ou apelido</label><input id="kname" type="text" maxlength="20" autocomplete="off" value="' + esc(f.name || "") + '" placeholder="Ex.: Lulu">' +
+    '<label for="kgrade">Ano na escola</label><select id="kgrade">' + SERIES.map(s => "<option" + ((f.grade || "5º ano") === s ? " selected" : "") + ">" + s + "</option>").join("") + "</select>" +
+    '<div class="btns"><button class="btn pri block" data-a="savekid">Começar</button>' + (S.kids.length ? '<button class="btn ghost block" data-a="back">Voltar</button>' : "") + "</div></div>" +
+    '<p class="small muted">Tudo fica salvo só neste aparelho. O nome não é enviado para a IA.</p>';
+}
+function ruler() {
+  const k = kid(), t = today(); let end = addDays(t, 6);
+  k.exams.forEach(e => { if (validD(e.date) && e.date > end && e.date <= addDays(t, 20)) end = e.date; });
+  let h = '<div class="ruler" role="group" aria-label="Dias da semana">';
+  for (let d = t; d <= end; d = addDays(d, 1)) {
+    const dt = parseD(d), ss = k.sessions.filter(s => s.date === d), ex = k.exams.filter(e => e.date === d);
+    h += '<button class="day' + (d === t ? " today" : "") + '" data-a="day" data-d="' + d + '" aria-pressed="' + (d === ui.day) + '" aria-label="' + esc(nice(d)) + '">' +
+      (ex.length ? '<span class="flag">PROVA</span>' : "") + '<div class="wd">' + (d === t ? "hoje" : WD[dt.getDay()]) + '</div><div class="dn">' + dt.getDate() + '</div><div class="dots">' +
+      ss.slice(0, 4).map(s => '<i class="dot' + (s.done ? " f" : "") + '"></i>').join("") + "</div></button>";
+  }
+  return h + "</div>";
+}
+function sessionCard(s) {
+  const ex = examOf(s.examId);
+  return '<button class="card tap' + (s.done ? " done" : "") + '" data-a="open" data-id="' + s.id + '"><div class="row"><span class="check' + (s.done ? " on" : "") + '">' + (s.done ? "✓" : "") + '</span><div class="grow"><h3>' + esc(s.title) + '</h3><div class="small muted">' + s.minutes + " min" + (ex ? " · prova " + esc(nice(ex.date)) : "") + "</div></div>" +
+    (linksOf(ex).length ? '<span class="tag">' + (hasVideo(ex) ? "▶️ vídeo" : "🔗 link") + "</span>" : "") + (s.type === "revisao" ? '<span class="tag rev">revisão</span>' : "") + (s.score ? '<span class="tag ok">' + s.score.right + "/" + s.score.total + "</span>" : "") + "</div></button>";
+}
+function vHoje() {
+  const k = kid(), t = today(), d = ui.day; let h = header(d === t ? "Hoje" : (w => w[0].toUpperCase() + w.slice(1))(WDL[parseD(d).getDay()].replace("-feira", ""))) + aiBanner();
+  if (!k.exams.length) return h + '<div class="card"><h2>Nenhuma prova cadastrada</h2><p class="muted">Comece enviando o comunicado da escola com as datas e os conteúdos.</p><div class="btns"><button class="btn pri block" data-a="tab" data-t="provas">Cadastrar as provas</button></div></div>';
+  h += ruler();
+  k.exams.filter(e => e.date === d).forEach(e => { h += '<div class="card alert"><h3>' + (d === t ? "Hoje tem" : "Dia de") + " prova de " + esc(e.subject) + '</h3><p class="small">' + (d === t ? "Respira fundo, lê cada pergunta com calma. Você se preparou! 🍀" : esc(e.topics)) + "</p></div>"; });
+  const ss = k.sessions.filter(s => s.date === d);
+  if (!k.sessions.length) h += '<div class="card"><h2>Falta montar o roteiro</h2><p class="muted">As provas já estão cadastradas. Envie as páginas de estudo e monte o roteiro.</p><div class="btns"><button class="btn pri block" data-a="tab" data-t="provas">Ir para as provas</button></div></div>';
+  else if (!ss.length) h += '<div class="card"><p>' + (d === t ? "Nada marcado para hoje. Pode descansar ou adiantar o de amanhã." : "Nada marcado para este dia.") + "</p></div>";
+  else { const left = ss.filter(s => !s.done); h += '<p class="muted small">' + (left.length ? left.reduce((a, s) => a + s.minutes, 0) + " minutos de estudo " + (d === t ? "para hoje" : "neste dia") : "Tudo feito por aqui! ⭐") + "</p>" + ss.map(sessionCard).join(""); }
+  const late = k.sessions.filter(s => !s.done && s.date < t && (examOf(s.examId)?.date || "") >= t);
+  if (late.length && d === t) h += '<h2 style="margin-top:18px">Ficou para trás</h2>' + late.map(sessionCard).join("");
+  return h;
+}
+function vProvas() {
+  const k = kid(), t = today(); let h = header("Provas") + aiBanner();
+  h += '<div class="btns"><button class="btn pri grow" data-a="notice">📄 Ler o comunicado</button><button class="btn" data-a="addexam">＋ Na mão</button></div>';
+  if (!k.exams.length) h += '<div class="card"><p class="muted">Envie a foto, o print, o PDF ou o Word que a escola mandou com as datas e conteúdos. Você confere tudo antes de montar o roteiro.</p></div>';
+  k.exams.forEach(e => {
+    const past = validD(e.date) && e.date < t;
+    h += '<div class="card' + (past ? " done" : "") + '"><div class="row between"><h2>' + esc(e.subject) + "</h2>" + (validD(e.date) ? '<span class="tag' + (e.date === addDays(t, 1) ? " bad" : "") + '">' + esc(nice(e.date)) + "</span>" : '<span class="tag bad">sem data</span>') + "</div>" +
+      (e.topics ? "<p>" + esc(e.topics) + "</p>" : "") + (e.pages ? '<p class="small muted">Estudar: ' + esc(e.pages) + "</p>" : "") + linksHtml(e) +
+      '<p class="small">' + (k.sessions.some(x => x.examId === e.id) ? '<span class="tag ok">no roteiro</span> ' : '<span class="tag">fora do roteiro</span> ') + (e.nPages ? '<span class="tag ok">' + e.nPages + " material(is) guardado(s)</span>" : '<span class="tag">material ainda não enviado</span>') + "</p>" +
+      '<div class="btns"><button class="btn" data-a="pages" data-id="' + e.id + '">📷 ' + (e.nPages ? "Mais páginas" : "Enviar páginas") + '</button><button class="btn" data-a="paste" data-id="' + e.id + '">📋 Colar texto</button>' + (past ? "" : '<button class="btn pri" data-a="planone" data-id="' + e.id + '">🗓️ ' + (k.sessions.some(x => x.examId === e.id) ? "Refazer roteiro desta prova" : "Montar roteiro desta prova") + "</button>") + '<button class="btn ghost" data-a="editexam" data-id="' + e.id + '">Editar</button></div></div>';
+  });
+  if (k.exams.length) h += '<div class="card"><h2>Roteiro de todas as provas</h2><p class="muted small">' + (k.sessions.length ? "Refaz o roteiro de todas as provas de uma vez. O que já foi feito continua marcado. Para mexer em uma só, use o botão dentro da prova." : "Confira datas e conteúdos acima. Com as páginas enviadas, as perguntas ficam iguais ao que cai na prova.") + '</p><div class="btns"><button class="btn pri block" data-a="plan">' + (k.sessions.length ? "Montar de novo com todas" : "Montar o roteiro de todas") + "</button></div></div>";
+  return h;
+}
+function vNotice() {
+  return '<button class="link" data-a="back">‹ Voltar</button><h1>Comunicados das provas</h1><p class="muted">Foto, print, PDF ou Word (.docx). Junte aqui os avisos de todas as professoras e leia tudo de uma vez.</p>' +
+    '<div class="card">' + (ui.files.length ? '<h3>Arquivos escolhidos</h3>' + ui.files.map((f, i) => '<div class="row between" style="padding:6px 0;border-bottom:1.5px dashed var(--line)"><span class="grow" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (isPdf(f) ? "📕 " : isDocx(f) ? "📘 " : "🖼️ ") + esc(f.name || "foto") + '</span><button class="link" data-a="rmfile" data-i="' + i + '">tirar</button></div>').join("") : "") +
+    '<div class="btns"><button class="btn block' + (ui.files.length ? "" : " pri") + '" data-a="noticefile">＋ ' + (ui.files.length ? "Adicionar mais arquivos" : "Escolher arquivos") + '</button></div><label for="ntext">Veio por mensagem? Cole o texto aqui</label><textarea id="ntext" placeholder="Ex.: 22/09 Matemática: frações, págs. 40 a 52…">' + esc(ui.form.ntext || "") + '</textarea><div class="btns"><button class="btn pri block" data-a="noticego">Ler os comunicados</button></div></div>' +
+    '<p class="small muted">As imagens são lidas pelo Gemini (Google) e não ficam guardadas: o app salva só o texto, neste aparelho. Se puder, corte da foto o nome completo da criança.</p>';
+}
+function vPaste() {
+  const e = examOf(ui.arg); if (!e) { ui.screen = null; return vProvas(); }
+  return '<button class="link" data-a="back">‹ Voltar</button><h1>Material de ' + esc(e.subject) + '</h1><p class="muted">Cole aqui o texto do material de estudo: resumo da professora, texto copiado de um arquivo ou a transcrição das páginas. Ele se soma ao que já foi enviado.</p><div class="card"><label for="ptext">Texto do material</label><textarea id="ptext" style="min-height:240px">' + esc(ui.form.ptext || "") + '</textarea><div class="btns"><button class="btn pri block" data-a="savepaste">Guardar material</button></div></div>';
+}
+function vExamForm() {
+  const f = ui.form, isNew = !f.id;
+  return '<button class="link" data-a="back">‹ Voltar</button><h1>' + (isNew ? "Nova prova" : "Editar prova") + '</h1><div class="card"><label for="esub">Matéria</label><input id="esub" type="text" maxlength="60" value="' + esc(f.subject || "") + '"><label for="edate">Dia da prova</label><input id="edate" type="date" value="' + esc(f.date || "") + '"><label for="etop">O que cai</label><textarea id="etop" maxlength="800">' + esc(f.topics || "") + '</textarea><label for="epag">Páginas ou materiais para estudar</label><input id="epag" type="text" maxlength="300" value="' + esc(f.pages || "") + '"><label for="elinks">Links que a professora indicou (um por linha)</label><textarea id="elinks" placeholder="https://youtu.be/... Vídeo de verbos">' + esc(f.links || "") + '</textarea><p class="small muted">Cole o endereço e, se quiser, escreva depois dele o que é.</p>' +
+    '<div class="btns"><button class="btn pri grow" data-a="saveexam">Salvar prova</button>' + (isNew ? "" : '<button class="btn danger" data-a="delexam">Apagar</button>') + "</div></div>" +
+    (!isNew && f.nPages ? '<div class="card"><p class="small muted">' + f.nPages + ' página(s) lidas para esta prova.</p><button class="btn ghost" data-a="clearpages">Apagar as páginas lidas</button></div>' : "");
+}
+function vSession() {
+  const s = sessOf(ui.arg), ex = s && examOf(s.examId); if (!s || !ex) { ui.screen = null; return vHoje(); }
+  const allSteps = s.steps.every(x => x.done), text = ui.explainLive || s.explain;
+  return '<button class="link" data-a="back">‹ Voltar</button><p class="small muted" style="margin:6px 0 0">' + esc(nice(s.date)) + " · " + s.minutes + " min" + (s.type === "revisao" ? " · revisão" : "") + '</p><h1><span class="mk">' + esc(s.title) + "</span></h1>" +
+    (linksOf(ex).length ? '<div class="card">' + linksHtml(ex, "A professora pediu para " + (hasVideo(ex) ? "assistir" : "acessar")) + "</div>" : "") +
+    '<div class="card"><h2>O que fazer</h2>' + s.steps.map((x, i) => '<button class="step' + (x.done ? " on" : "") + '" data-a="step" data-i="' + i + '" aria-pressed="' + x.done + '"><span class="check' + (x.done ? " on" : "") + '">' + (x.done ? "✓" : i + 1) + "</span><span>" + esc(x.t) + "</span></button>").join("") + "</div>" +
+    '<div class="card"><h2>Não entendeu alguma parte?</h2>' + (text ? '<div class="explain" id="explain">' + esc(text) + "</div>" : '<p class="muted small">O app explica o assunto desta sessão do jeito mais fácil.</p>') + '<div class="btns"><button class="btn" data-a="explain"' + (ui.explainLive ? " disabled" : "") + ">💡 " + (s.explain ? "Explicar de outro jeito" : "Explica pra mim") + "</button></div></div>" +
+    '<div class="card"><h2>Hora do quiz</h2><p class="muted small">' + (s.score ? "Última vez: " + s.score.right + " de " + s.score.total + ". Dá para tentar de novo com perguntas novas." : allSteps ? "Terminou os passos? Mostre o que aprendeu!" : "Faça os passos acima primeiro; depois venha treinar.") + (ex.content ? "" : " Sem as páginas enviadas, as perguntas saem só dos assuntos do comunicado.") + '</p><div class="btns"><button class="btn pri block" data-a="quiz">' + (s.score ? "Fazer outro quiz" : "Começar o quiz") + "</button></div></div>" +
+    '<div class="btns"><button class="btn ghost block" data-a="toggledone">' + (s.done ? "Marcar como não feito" : "Marcar como feito sem quiz") + "</button></div>";
+}
+function vQuiz() {
+  const z = ui.quiz, q = z.qs[z.i], L = "ABCD";
+  let h = '<div class="row between"><button class="link" data-a="quitquiz">Sair do quiz</button><span class="small muted">Pergunta ' + (z.i + 1) + " de " + z.qs.length + '</span></div><div class="bar"><i style="width:' + Math.round((z.i + (z.picked !== null ? 1 : 0)) / z.qs.length * 100) + '%"></i></div><h2>' + esc(q.q) + "</h2>";
+  h += q.opts.map((o, i) => '<button class="opt' + (z.picked !== null ? (o.ok ? " right" : i === z.picked ? " wrong" : "") : "") + '" data-a="pick" data-i="' + i + '"' + (z.picked !== null ? " disabled" : "") + '><span class="l">' + (L[i] || i + 1) + "</span><span>" + esc(o.t) + "</span></button>").join("");
+  if (z.picked !== null) { const ok = q.opts[z.picked].ok; h += '<div class="card' + (ok ? "" : " alert") + '"><h3>' + (ok ? "Isso mesmo! ⭐" : "Quase! Olha só:") + "</h3><p>" + esc(q.why) + '</p></div><button class="btn pri block" data-a="nextq">' + (z.i + 1 < z.qs.length ? "Próxima pergunta" : "Ver meu resultado") + "</button>"; }
+  return h;
+}
+function vResult() {
+  const z = ui.quiz, r = z.right / z.qs.length;
+  return '<div class="card" style="text-align:center"><div style="font-size:3rem">' + (r >= .8 ? "🏆" : r >= .5 ? "💪" : "🌱") + '</div><div class="score">' + z.right + "/" + z.qs.length + "</div><h2>" + (r >= .8 ? "Mandou muito bem!" : r >= .5 ? "Bom treino! Falta pouco." : "Tudo bem errar: é assim que aprende.") + "</h2>" +
+    (z.wrong.length ? '<p class="muted small" style="text-align:left">Vale reler: ' + esc([...new Set(z.wrong.map(w => w.topic).filter(Boolean))].join("; ") || "as perguntas que você errou") + ". Esses pontos voltam na revisão.</p>" : "") +
+    '<div class="btns"><button class="btn pri block" data-a="endquiz">Concluir</button>' + (z.wrong.length ? '<button class="btn block" data-a="retryquiz">Treinar de novo com perguntas novas</button>' : "") + "</div></div>";
+}
+function vPais() {
+  const k = kid(), t = today(); let h = header("Pais") + '<p class="muted small">Acompanhamento de ' + esc(k.name) + " (" + esc(k.grade) + ").</p>";
+  if (!k.exams.length) h += '<div class="card"><p class="muted">Quando houver provas cadastradas, o progresso aparece aqui.</p></div>';
+  k.exams.forEach(e => {
+    const ss = k.sessions.filter(s => s.examId === e.id), dn = ss.filter(s => s.done).length, sc = ss.filter(s => s.score);
+    const avg = sc.length ? Math.round(sc.reduce((a, s) => a + s.score.right / s.score.total, 0) / sc.length * 100) : null;
+    const weak = [...new Set(e.misses.map(m => m.topic).filter(Boolean))].slice(-5);
+    h += '<div class="card"><div class="row between"><h3>' + esc(e.subject) + '</h3><span class="small muted">' + (validD(e.date) ? esc(nice(e.date)) : "sem data") + '</span></div><div class="bar"><i style="width:' + (ss.length ? Math.round(dn / ss.length * 100) : 0) + '%"></i></div><p class="small">' + dn + " de " + ss.length + " sessões feitas" + (avg !== null ? " · acertos no quiz: <b>" + avg + "%</b>" : "") + "</p>" +
+      (weak.length ? '<p class="small"><b>Pontos de atenção:</b> ' + esc(weak.join("; ")) + "</p>" : "") + "</div>";
+  });
+  h += '<div class="card"><h2>Inteligência artificial</h2>' + (sample ? '<p class="small"><span class="tag ok">ligada</span> ' + esc(G.model || (G.models && G.models[0]) || "Gemini") + '</p><p class="small muted">A chave fica guardada só neste aparelho e não entra na cópia de segurança.</p><div class="btns"><button class="btn ghost" data-a="goff">Desligar e apagar a chave</button></div>' : '<p class="small muted">Cole aqui a chave gratuita do Gemini (Google AI Studio). Ela fica só neste aparelho.</p><label for="gkey">Chave do Gemini</label><input id="gkey" type="password" autocomplete="off" placeholder="Cole a chave (começa com AQ. ou AIza)"><div class="btns"><button class="btn pri block" data-a="gsave">Salvar e testar</button></div>') + "</div>";
+  h += '<div class="card"><h2>Ajustes do roteiro</h2><label for="smin">Tempo máximo de estudo por dia</label><select id="smin" data-c="minutes">' + [30, 45, 60, 90].map(m => '<option value="' + m + '"' + (S.settings.minutes === m ? " selected" : "") + ">" + m + " minutos</option>").join("") + '</select><label class="row" style="font-weight:600;margin-top:12px"><input type="checkbox" data-c="weekends"' + (S.settings.weekends ? " checked" : "") + ' style="width:22px;height:22px"> Estudar também no fim de semana</label><p class="small muted">Vale para o próximo roteiro montado.</p></div>';
+  h += '<div class="card"><h2>Crianças</h2>' + S.kids.map(x => '<div class="row between" style="padding:6px 0"><span><b>' + esc(x.name) + "</b> · " + esc(x.grade) + '</span><button class="link" data-a="delkid" data-id="' + x.id + '">remover</button></div>').join("") + '<div class="btns"><button class="btn" data-a="newkid">＋ Adicionar criança</button><button class="btn ghost" data-a="newweek">Nova semana de provas</button></div></div>';
+  h += '<div class="card"><h2>Cópia de segurança</h2><p class="small muted">' + (storageOk ? "Os dados ficam só neste aparelho e neste navegador." : "<b>Atenção:</b> este navegador não está deixando salvar; ao fechar, os dados se perdem.") + ' Para levar a outro aparelho, copie o código e cole lá.</p><div class="btns"><button class="btn ghost" data-a="export">Mostrar código</button><button class="btn ghost" data-a="import">Colar código</button></div>' +
+    (ui.form.io ? '<textarea id="io" style="margin-top:10px;font-size:.78rem" ' + (ui.form.io === "export" ? "readonly>" + esc(JSON.stringify(S)) : 'placeholder="Cole o código aqui">') + "</textarea>" + (ui.form.io === "import" ? '<div class="btns"><button class="btn pri" data-a="doimport">Restaurar</button></div>' : "") : "") + "</div>";
+  h += '<p class="small muted">As explicações e perguntas são feitas por IA a partir do material enviado e podem conter erros. Na dúvida, vale o que está no livro e o que a professora ensinou.</p>';
+  return h;
+}
+function render() {
+  const k = kid(); let h;
+  if (!k || ui.screen === "welcome") h = vWelcome();
+  else if (ui.screen === "notice") h = vNotice();
+  else if (ui.screen === "exam") h = vExamForm();
+  else if (ui.screen === "paste") h = vPaste();
+  else if (ui.screen === "session") h = vSession();
+  else if (ui.screen === "quiz") h = vQuiz();
+  else if (ui.screen === "result") h = vResult();
+  else h = ui.tab === "provas" ? vProvas() : ui.tab === "pais" ? vPais() : vHoje();
+  if (k && !ui.screen) h += '<nav class="nav" aria-label="Seções">' + [["hoje", "📅", "Hoje"], ["provas", "📝", "Provas"], ["pais", "👀", "Pais"]].map(([t, ic, l]) => '<button data-a="tab" data-t="' + t + '"' + (ui.tab === t ? ' aria-current="page"' : "") + '><span class="ic">' + ic + "</span>" + l + "</button>").join("") + "</nav>";
+  if (ui.busy) h += '<div class="veil" role="alertdialog" aria-label="Aguarde"><div class="card"><div class="pencil">✏️</div><h2>' + esc(ui.busy.msg) + '</h2><p class="muted small">' + esc(ui.busy.sub) + '</p><div class="btns" style="justify-content:center"><button class="btn ghost" data-a="stop">Parar</button></div></div></div>';
+  if (ui.confirm) h += '<div class="veil" role="alertdialog" aria-label="Confirmar"><div class="card"><h2>' + esc(ui.confirm.msg) + '</h2><div class="btns" style="justify-content:center"><button class="btn ghost" data-a="cno">Cancelar</button><button class="btn pri" data-a="cyes">' + esc(ui.confirm.label || "Sim") + "</button></div></div></div>";
+  $("#app").innerHTML = h;
+}
+function keepForm() { document.querySelectorAll("#app input[id],#app textarea[id],#app select[id]").forEach(el => { const m = { kname: "name", kgrade: "grade", ntext: "ntext", esub: "subject", edate: "date", etop: "topics", epag: "pages", elinks: "links", ptext: "ptext" }[el.id]; if (m) ui.form[m] = el.value; }); }
+
+/* ============ ações ============ */
+const A = {
+  tab(d) { ui.tab = d.t; ui.screen = null; ui.form = {}; if (d.t === "hoje") ui.day = today(); },
+  day(d) { ui.day = d.d; },
+  kid(d) { S.active = d.id; save(); ui.screen = null; ui.day = today(); },
+  newkid() { ui.form = {}; ui.screen = "welcome"; },
+  back() { ui.screen = null; ui.form = {}; if (ctl) ctl.abort(); ui.explainLive = ""; },
+  savekid() { const name = (ui.form.name || "").trim(); if (!name) return toast("Escreva o nome ou apelido."); const k = { id: uid(), name: name.slice(0, 20), grade: ui.form.grade || "5º ano", exams: [], sessions: [], planAt: null }; S.kids.push(k); S.active = k.id; save(); ui.screen = null; ui.form = {}; ui.tab = "provas"; },
+  delkid(d) { const x = S.kids.find(k => k.id === d.id); if (!x) return; confirmBox("Remover " + x.name + " e tudo o que foi salvo?", () => { S.kids = S.kids.filter(k => k.id !== d.id); if (S.active === d.id) S.active = S.kids[0]?.id || null; save(); }, "Remover"); },
+  newweek() { const k = kid(); confirmBox("Apagar as provas e o roteiro de " + k.name + " para começar uma nova semana?", () => { k.exams = []; k.sessions = []; k.planAt = null; save(); ui.tab = "provas"; }, "Apagar"); },
+  notice() { ui.form = {}; ui.files = []; ui.screen = "notice"; },
+  async noticefile() { const files = await pickFiles(); keepForm(); for (const f of files) if (ui.files.length < 12) ui.files.push(f); render(); },
+  rmfile(d) { ui.files.splice(+d.i, 1); },
+  noticego() { const t = (ui.form.ntext || "").trim(); if (!ui.files.length && t.length < 10) return toast("Escolha os arquivos ou cole o texto do aviso."); readNotice(ui.files.slice(), t); },
+  addexam() { ui.form = {}; ui.screen = "exam"; },
+  editexam(d) { const e = examOf(d.id); if (!e) return; ui.form = { id: e.id, subject: e.subject, date: e.date, topics: e.topics, pages: e.pages, nPages: e.nPages, links: linksOf(e).map(l => l.url + (l.label ? " " + l.label : "")).join("\n") }; ui.screen = "exam"; },
+  saveexam() { const f = ui.form, k = kid(); if (!(f.subject || "").trim()) return toast("Escreva a matéria."); if (!validD(f.date)) return toast("Escolha o dia da prova."); let e = f.id && examOf(f.id); if (!e) { e = { id: uid(), content: "", nPages: 0, misses: [], asked: [] }; k.exams.push(e); } const moved = e.date && e.date !== f.date; Object.assign(e, { subject: f.subject.trim().slice(0, 60), date: f.date, topics: (f.topics || "").trim(), pages: (f.pages || "").trim(), links: parseLinks(f.links) }); k.exams.sort((a, b) => (a.date || "9").localeCompare(b.date || "9")); save(); ui.screen = null; ui.form = {}; if (moved && k.sessions.length) toast("Data mudou: monte o roteiro de novo."); },
+  delexam() { const k = kid(), id = ui.form.id; confirmBox("Apagar esta prova e as sessões dela?", () => { k.exams = k.exams.filter(e => e.id !== id); k.sessions = k.sessions.filter(s => s.examId !== id); save(); ui.screen = null; ui.form = {}; }, "Apagar"); },
+  clearpages() { const e = examOf(ui.form.id); if (!e) return; confirmBox("Apagar o conteúdo lido das páginas desta prova?", () => { e.content = ""; e.nPages = 0; ui.form.nPages = 0; save(); }, "Apagar"); },
+  pages(d) { readPages(d.id); },
+  video(d) { readVideo(d.id, d.u); },
+  async gsave() { const key = ($("#gkey") ? $("#gkey").value : "").trim(); if (key.length < 20) return toast("Cole a chave inteira do Gemini."); busy("Testando a chave…"); try { await connectGemini(key); idle(); toast("IA ligada! Modelo: " + (G.models[0] || "Gemini")); } catch (e) { idle(); toast(errMsg(e)); } },
+  goff() { confirmBox("Desligar a IA e apagar a chave deste aparelho?", () => { G = {}; saveG(); sample = null; }, "Desligar"); },
+  planone(d) { const e = examOf(d.id); if (!e) return; if (!e.content && sample) return confirmBox("Ainda não há material de " + e.subject + ". Montar o roteiro só com os assuntos do comunicado?", () => makePlan(e.id), "Montar"); return makePlan(e.id); },
+  paste(d) { ui.form = {}; ui.arg = d.id; ui.screen = "paste"; window.scrollTo(0, 0); },
+  savepaste() { const e = examOf(ui.arg), t = (ui.form.ptext || "").trim(); if (!e) return; if (t.length < 20) return toast("Cole o texto do material primeiro."); e.content = ((e.content ? e.content + "\n\n" : "") + t).slice(0, MAX_CONTENT); e.nPages = (e.nPages || 0) + 1; save(); ui.screen = null; ui.form = {}; toast("Material guardado! Já vale para as explicações e os quizzes."); },
+  plan() { const k = kid(); const missing = k.exams.filter(e => !e.nPages && e.date > today()).length; if (missing && sample) return confirmBox(missing + " prova(s) ainda sem páginas enviadas. Montar o roteiro mesmo assim?", makePlan, "Montar"); return makePlan(); },
+  open(d) { ui.screen = "session"; ui.arg = d.id; ui.explainLive = ""; window.scrollTo(0, 0); },
+  step(d) { const s = sessOf(ui.arg); if (!s) return; const x = s.steps[+d.i]; x.done = !x.done; save(); if (sample && s.steps.every(y => y.done) && !s.score) fetchQuiz(s.id).catch(() => {}); },
+  toggledone() { const s = sessOf(ui.arg); s.done = !s.done; save(); if (s.done) { ui.screen = null; } },
+  explain() { explain(ui.arg); },
+  quiz() { startQuiz(ui.arg); },
+  pick(d) { const z = ui.quiz; if (z.picked !== null) return; z.picked = +d.i; const q = z.qs[z.i]; if (q.opts[z.picked].ok) z.right++; else z.wrong.push({ q: q.q.slice(0, 90), topic: q.topic }); },
+  nextq() { const z = ui.quiz; if (z.i + 1 < z.qs.length) { z.i++; z.picked = null; window.scrollTo(0, 0); } else return finishQuiz(); },
+  quitquiz() { confirmBox("Sair do quiz? As respostas não ficam salvas.", () => { ui.screen = "session"; ui.quiz = null; }, "Sair"); },
+  endquiz() { ui.screen = null; ui.quiz = null; ui.tab = "hoje"; },
+  retryquiz() { const sid = ui.quiz.sid; ui.arg = sid; ui.screen = "session"; ui.quiz = null; startQuiz(sid); },
+  stop() { if (ctl) ctl.abort(); idle(); },
+  cno() { ui.confirm = null; },
+  cyes() { const f = ui.confirm && ui.confirm.yes; ui.confirm = null; if (f) return f(); },
+  export() { ui.form.io = ui.form.io === "export" ? null : "export"; },
+  import() { ui.form.io = ui.form.io === "import" ? null : "import"; },
+  doimport() { try { const s = JSON.parse($("#io").value); if (!s || !Array.isArray(s.kids)) throw 0; confirmBox("Substituir os dados deste aparelho pelos do código?", () => { S = s; S.settings = S.settings || { minutes: 45, weekends: true }; save(); ui.form = {}; toast("Dados restaurados."); }, "Substituir"); } catch (e) { toast("Esse código não é válido."); } },
+};
+document.addEventListener("click", ev => {
+  const b = ev.target.closest("[data-a]"); if (!b || b.disabled) return;
+  keepForm(); const fn = A[b.dataset.a]; if (!fn) return;
+  fn(b.dataset); render();
+});
+document.addEventListener("change", ev => {
+  const c = ev.target.dataset && ev.target.dataset.c; if (!c) return;
+  if (c === "minutes") S.settings.minutes = +ev.target.value; if (c === "weekends") S.settings.weekends = ev.target.checked; save();
+});
+document.addEventListener("focusin", ev => { if (ev.target.id === "io" && ev.target.readOnly) ev.target.select(); });
+render();
+</script>
+</body>
+</html>
