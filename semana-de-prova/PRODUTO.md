@@ -50,7 +50,8 @@ Os códigos são comprimidos pelo próprio navegador, o que os deixa cerca de de
 
 ### 4.3 Durante a semana
 - Chegou material novo: envia na prova correspondente. O conteúdo se soma ao anterior e já vale para explicações e quizzes. Se mudar muito, refaz o roteiro daquela prova; o que a criança já concluiu continua marcado. **[hoje]**
-- Chegou comunicado novo: lê de novo. Prova repetida (mesma matéria e data) não duplica; links novos são somados. Mudança de data se corrige em "Editar". **[hoje]**
+- Chegou comunicado novo: lê de novo. Prova repetida (mesma matéria **e** data) não duplica; links novos são somados. Mudança de data se corrige em "Editar". **[hoje]**
+- Quando dois comunicados falam da mesma prova com **datas diferentes**, o app não junta sozinho, porque duas provas da mesma matéria em datas diferentes podem ser reais. Ele avisa que a matéria aparece mais de uma vez e oferece juntar: a mãe escolhe a data certa e as outras entradas somem, levando para a escolhida os assuntos, as páginas, os links e o material lido que cada uma trouxe. **[hoje]**
 - Na aba Pais, acompanha por matéria: sessões feitas, percentual de acertos no quiz e "pontos de atenção", que são os assuntos em que a criança errou. **[hoje]**
 - Ajusta o **ritmo de cada filho** (calmo, normal ou puxado), que define quanto conteúdo entra em cada parte. É o ajuste certo quando a criança precisa de mais tempo para absorver. **[hoje]**
 - Ajusta o tempo máximo de estudo por dia (30, 45, 60 ou 90 minutos) e se estuda no fim de semana. **[hoje]**

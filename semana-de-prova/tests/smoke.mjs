@@ -879,5 +879,61 @@ console.log("\n20. foto com duas páginas numa só");
   ok(pr.includes("120-121"), "e mostra o formato de página dupla");
 }
 
+/* ================= 21. provas repetidas ================= */
+console.log("\n21. provas repetidas (o caso do Espanhol)");
+{
+  const { w, t } = await boot([]);
+  t.ui.form = { name: "Benja", grade: "4º ano" }; t.A.savekid();
+  const k = t.S.kids[0];
+  const prova = (id, data, topics, pages, links, blocos, nPages) => ({
+    id, subject: "Espanhol", date: data, topics, pages, links: links || [], content: "",
+    blocks: blocos || [], material: null, nPages: nPages || 0, misses: [], asked: [],
+  });
+  // o mesmo Espanhol lido de dois comunicados, com datas diferentes, mais um terceiro
+  k.exams.push(prova("e1", "2099-10-02", "Lección 5 LAS PROFESIONES", "58-67", [{ url: "https://exemplo.com/a", label: "site" }], [], 0));
+  k.exams.push(prova("e2", "2099-10-06", "", "68-70", [{ url: "https://exemplo.com/b", label: "outro" }], [{ materia: "Espanhol", assunto: "profissões", pagina: "58", conceitos: [], texto: "médico, profesor", hash: "hA" }], 1));
+  k.exams.push(prova("e3", "2099-10-09", "", "", [], [], 0));
+  k.exams.push({ ...prova("e9", "2099-10-05", "frações", "5-33", [], [], 0), subject: "Matemática" });
+  k.sessions.push({ id: "s1", examId: "e2", ord: 1, date: null, type: "estudo", title: "Espanhol: profissões", minutes: 20, steps: [{ t: "Leia.", done: false }], done: false, explain: "", score: null });
+
+  // deteccao
+  const rep = w.repetidas();
+  eq(rep.length, 1, "detecta uma matéria repetida");
+  eq(rep[0].materia, "Espanhol", "e diz qual é");
+  eq(rep[0].provas.length, 3, "com as três entradas");
+
+  // aviso aparece na tela
+  t.ui.tab = "pais"; t.ui.unlocked = true; t.ui.screen = "pprovas"; w.render();
+  let html = w.document.getElementById("app").innerHTML;
+  ok(html.includes("Prova repetida"), "a tela avisa que há prova repetida");
+  ok(html.includes("Juntar as 3 de Espanhol"), "e oferece juntar");
+
+  // tela de escolha
+  t.A.juntar({ m: "Espanhol" }); w.render();
+  html = w.document.getElementById("app").innerHTML;
+  ok(html.includes("Juntar"), "abre a tela de juntar");
+  ok(html.includes("2/10") || html.includes("sexta-feira"), "mostrando as datas para escolher");
+  ok(html.includes("1 parte(s) de roteiro"), "e o que cada entrada tem");
+
+  // junta na data de 06/10
+  const r = w.juntarEm("e2");
+  eq(r.juntadas, 2, "juntou as outras duas");
+  const esp = k.exams.filter(e => e.subject === "Espanhol");
+  eq(esp.length, 1, "sobrou uma só de Espanhol");
+  eq(esp[0].date, "2099-10-06", "com a data escolhida");
+  ok(esp[0].topics.includes("PROFESIONES"), "herdou os assuntos da outra");
+  ok(esp[0].pages.includes("58-67") && esp[0].pages.includes("68-70"), "e as páginas das duas");
+  eq(esp[0].links.length, 2, "os links das duas foram somados");
+  eq(esp[0].blocks.length, 1, "o material lido foi preservado");
+  eq(k.exams.length, 2, "Matemática não foi tocada");
+  ok(k.exams.some(e => e.subject === "Matemática"), "Matemática continua lá");
+  eq(k.sessions.filter(s => s.examId === esp[0].id).length, 1, "o roteiro continua ligado à prova certa");
+  eq(w.repetidas().length, 0, "não há mais repetidas");
+
+  // sem repetidas, nenhum aviso
+  t.ui.screen = "pprovas"; w.render();
+  ok(!w.document.getElementById("app").innerHTML.includes("Prova repetida"), "o aviso some quando não há repetição");
+}
+
 console.log(`\n${passed} passaram, ${failed} falharam`);
 process.exit(failed ? 1 : 0);

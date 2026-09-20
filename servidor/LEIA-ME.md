@@ -22,34 +22,37 @@ você pode querer levá-lo para um domínio próprio sem depender da empresa.
 
 ## Publicar (uma vez só)
 
-Rode tudo dentro desta pasta (`servidor/`).
+**De onde rodar:** da raiz do projeto (`apps-para-maes/`), use os atalhos abaixo.
+Se preferir rodar o `wrangler` direto, entre antes na pasta `servidor/` com
+`cd servidor` — fora dela o wrangler não acha a configuração e reclama que
+falta o nome do Worker.
 
 ```bash
-npx wrangler login
+npm run servidor:login
 ```
 Abre o navegador. Entre na **conta pessoal**.
 
 ```bash
-npx wrangler secret put GEMINI_KEY
+npm run servidor:chave
 ```
 Cola a chave do Gemini quando ele pedir. Ela vai direto para a Cloudflare —
 não passa por arquivo, nem por log, nem por mim.
 
 ```bash
-npx wrangler secret put CODIGOS
+npm run servidor:codigos
 ```
 Os códigos de acesso, separados por vírgula. Ex.: `CASA2026,TURMA4A`
 Um por turma facilita revogar depois: basta rodar este comando de novo sem ele.
 
 ```bash
-npx wrangler kv namespace create USO
+npm run servidor:kv
 ```
 Cria o contador do teto diário. Ele devolve um `id` — cole no `wrangler.toml`,
 na seção `[[kv_namespaces]]`, e tire o `#` das três linhas.
 **Opcional:** sem isso o Worker funciona, mas sem teto diário.
 
 ```bash
-npx wrangler deploy
+npm run servidor:publicar
 ```
 No fim ele imprime o endereço, algo como
 `https://semana-de-prova.SEU-NOME.workers.dev`
@@ -71,7 +74,7 @@ No `wrangler.toml`:
 - `ORIGENS` — endereços que podem chamar o Worker. Acrescente o domínio próprio
   quando comprar. Vazio libera qualquer origem.
 - `TETO_DIA` — pedidos por aparelho por dia (padrão 120). Depois de mudar,
-  rode `npx wrangler deploy` de novo.
+  rode `npm run servidor:publicar` de novo.
 
 ## Testar sem gastar cota
 
@@ -83,7 +86,7 @@ npm test
 Para ver o que está acontecendo no servidor de verdade:
 
 ```bash
-npx wrangler tail
+npm run servidor:log
 ```
 
 ## O que protege, e o que não protege

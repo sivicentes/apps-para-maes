@@ -1064,10 +1064,76 @@ function vHoje() {
   if (!algum) h += '<div class="card"><p class="muted">Nenhuma parte de estudo montada ainda.</p></div>';
   return h;
 }
+/* ============ provas repetidas ============ */
+/* Ler dois comunicados sobre a mesma prova (o calendario geral e o da
+   professora, por exemplo) cria entradas separadas quando as datas saem
+   diferentes. A deduplicacao automatica so junta materia+data iguais, de
+   proposito: duas provas da mesma materia em datas diferentes podem ser
+   reais. Entao o app detecta e deixa a mae decidir. */
+function repetidas() {
+  const k = kid(), por = {};
+  k.exams.forEach(e => { const m = e.subject.trim().toLowerCase(); (por[m] = por[m] || []).push(e); });
+  return Object.keys(por).filter(m => por[m].length > 1).map(m => ({ materia: por[m][0].subject, provas: por[m] }));
+}
+function avisoRepetidas() {
+  const r = repetidas(); if (!r.length) return "";
+  return '<div class="card alert"><h3>⚠️ Prova repetida</h3><p class="small">' +
+    r.map(x => "<b>" + esc(x.materia) + "</b> aparece " + x.provas.length + " vezes").join(", ") +
+    '.</p><p class="small muted">Costuma acontecer quando dois comunicados falam da mesma prova com datas diferentes. Junte numa só escolhendo a data certa, ou apague as sobrando em cada prova.</p>' +
+    r.map(x => '<div class="acts"><button class="btn" data-a="juntar" data-m="' + esc(x.materia) + '">🧹 Juntar as ' + x.provas.length + " de " + esc(x.materia) + "</button></div>").join("") + "</div>";
+}
+function vJuntar() {
+  const alvo = String(ui.arg || "").toLowerCase();
+  const grupo = repetidas().find(x => x.materia.toLowerCase() === alvo);
+  if (!grupo) { ui.screen = "pprovas"; return vPProvas(); }
+  let h = '<button class="link" data-a="pprovas">‹ Provas</button><div class="subhead"><div class="crumb">' + grupo.provas.length + ' entradas</div><h1>Juntar <span class="mk">' + esc(grupo.materia) + "</span></h1></div>";
+  h += '<p class="muted">Qual é a data certa da prova? As outras entradas somem, e tudo que elas trouxeram — assuntos, páginas, links e material lido — vai para a que você escolher.</p>';
+  grupo.provas.forEach(e => {
+    const ss = kid().sessions.filter(s => s.examId === e.id);
+    h += '<button class="exam" data-a="juntarok" data-id="' + e.id + '"><div class="row between"><h3 class="grow">' + (validD(e.date) ? esc(nice(e.date)) : "sem data") + '</h3><span class="when">escolher ›</span></div>' +
+      (e.topics ? '<p class="small" style="margin:6px 0 0">' + esc(e.topics.slice(0, 120)) + (e.topics.length > 120 ? "…" : "") + "</p>" : '<p class="small muted" style="margin:6px 0 0">sem assuntos anotados</p>') +
+      '<div class="chips">' + (e.pages ? '<span class="tag">p. ' + esc(e.pages.slice(0, 30)) + "</span>" : "") +
+      (e.nPages ? '<span class="tag ok">' + e.nPages + " material(is)</span>" : '<span class="tag">sem material</span>') +
+      (ss.length ? '<span class="tag ok">' + ss.length + " parte(s) de roteiro</span>" : "") +
+      (linksOf(e).length ? '<span class="tag">' + linksOf(e).length + " link(s)</span>" : "") + "</div></button>";
+  });
+  h += '<p class="small muted">Se as duas datas estiverem certas porque são provas diferentes mesmo, volte e apague só a errada em cada prova.</p>';
+  return h;
+}
+/* junta o grupo na prova escolhida, preservando o que cada uma trouxe */
+function juntarEm(idEscolhida) {
+  const k = kid(), base = examOf(idEscolhida); if (!base) return null;
+  const outras = k.exams.filter(e => e.id !== base.id && e.subject.trim().toLowerCase() === base.subject.trim().toLowerCase());
+  if (!outras.length) return null;
+  for (const o of outras) {
+    if (!base.topics && o.topics) base.topics = o.topics;
+    else if (o.topics && base.topics && !base.topics.includes(o.topics.slice(0, 40))) base.topics = (base.topics + " " + o.topics).slice(0, 800);
+    if (!base.pages && o.pages) base.pages = o.pages;
+    else if (o.pages && base.pages && !base.pages.includes(o.pages.slice(0, 12))) base.pages = (base.pages + "; " + o.pages).slice(0, 300);
+    const atuais = linksOf(base);
+    linksOf(o).forEach(l => { if (!atuais.some(x => x.url === l.url)) atuais.push(l); });
+    base.links = atuais.slice(0, 8);
+    seedBlocks(o); seedBlocks(base);
+    const novos = o.blocks.filter(b => !base.blocks.some(x => x.hash === b.hash));
+    if (novos.length) { base.blocks = base.blocks.concat(novos); base.nPages = (base.nPages || 0) + novos.length; deriveContent(base); }
+    if (!base.material && o.material) base.material = o.material;
+    base.misses = base.misses.concat(o.misses || []).slice(-20);
+    base.asked = base.asked.concat(o.asked || []).slice(-40);
+    /* roteiro: so herda se a escolhida ainda nao tem um */
+    if (!k.sessions.some(s => s.examId === base.id)) k.sessions.forEach(s => { if (s.examId === o.id) s.examId = base.id; });
+  }
+  const ids = outras.map(e => e.id);
+  k.exams = k.exams.filter(e => !ids.includes(e.id));
+  k.sessions = k.sessions.filter(s => !ids.includes(s.examId));
+  k.exams.sort((a, b) => (a.date || "9").localeCompare(b.date || "9"));
+  save();
+  return { juntadas: outras.length, materia: base.subject };
+}
 function provasBlock() {
   const k = kid(), t = today(); let h = "";
   h += '<div class="acts two"><button class="btn pri" data-a="notice">📄 Ler o comunicado</button><button class="btn" data-a="addexam">＋ Cadastrar na mão</button></div>';
   if (!k.exams.length) return h + '<div class="card"><p class="muted">Envie a foto, o print, o PDF ou o Word que a escola mandou com as datas e conteúdos. Você confere tudo antes de montar o roteiro.</p></div>';
+  h += avisoRepetidas();
   h += '<div class="sec">Provas</div>';
   k.exams.forEach(e => {
     const past = validD(e.date) && e.date < t;
@@ -1350,7 +1416,7 @@ function vDiag() {
 }function render() {
   aplicaModo();
   const k = kid(); let h;
-  if (ui.screen && /^(pprovas|pprog|pajustes|pia|pavancado|pcompartilhar|examdet)$/.test(ui.screen) && (ui.tab !== "pais" || locked())) ui.screen = null;
+  if (ui.screen && /^(pprovas|pprog|pajustes|pia|pavancado|pcompartilhar|examdet|juntar)$/.test(ui.screen) && (ui.tab !== "pais" || locked())) ui.screen = null;
   if (!k || ui.screen === "welcome") h = vWelcome();
   else if (ui.screen === "notice") h = vNotice();
   else if (ui.screen === "exam") h = vExamForm();
@@ -1367,6 +1433,7 @@ function vDiag() {
   else if (ui.screen === "pavancado") h = vPAvancado();
   else if (ui.screen === "pcompartilhar") h = vPCompartilhar();
   else if (ui.screen === "examdet") h = vExamDet();
+  else if (ui.screen === "juntar") h = vJuntar();
   else if (ui.tab === "pais") h = locked() ? vLock() : vPais();
   else h = vHoje();
   if (k && !ui.screen) h += '<nav class="nav" aria-label="Seções">' + [["hoje", "📅", "Estudar"], ["pais", "🔒", "Pais"]].map(([t, ic, l]) => '<button data-a="tab" data-t="' + t + '"' + (ui.tab === t ? ' aria-current="page"' : "") + '><span class="ic">' + ic + "</span>" + l + "</button>").join("") + "</nav>";
@@ -1486,6 +1553,12 @@ const A = {
     catch (e) { SRV = antes || {}; saveSrv(); idle(); toast(errMsg(e)); }
   },
   srvoff() { confirmBox("Desligar o servidor neste aparelho?", () => { SRV = { id: SRV.id }; saveSrv(); }, "Desligar"); },
+  juntar(d) { ui.arg = d.m; ui.screen = "juntar"; window.scrollTo(0, 0); },
+  juntarok(d) { const e = examOf(d.id); if (!e) return;
+    confirmBox("Manter " + e.subject + " em " + (validD(e.date) ? nice(e.date) : "sem data") + " e juntar as outras nesta?", () => {
+      const r = juntarEm(d.id); ui.screen = "pprovas";
+      toast(r ? r.juntadas + " entrada(s) de " + r.materia + " juntada(s). Confira a data e monte o roteiro." : "Nada para juntar.");
+    }, "Juntar"); },
   clearlog() { LOG = []; saveLog(); },
   export() { ui.form.io = ui.form.io === "export" ? null : "export"; },
   import() { ui.form.io = ui.form.io === "import" ? null : "import"; },

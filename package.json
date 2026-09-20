@@ -4,7 +4,13 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node semana-de-prova/tests/smoke.mjs"
+    "test": "node semana-de-prova/tests/smoke.mjs",
+    "servidor:login": "wrangler login --config servidor/wrangler.toml",
+    "servidor:chave": "wrangler secret put GEMINI_KEY --config servidor/wrangler.toml",
+    "servidor:codigos": "wrangler secret put CODIGOS --config servidor/wrangler.toml",
+    "servidor:kv": "wrangler kv namespace create USO --config servidor/wrangler.toml",
+    "servidor:publicar": "wrangler deploy --config servidor/wrangler.toml",
+    "servidor:log": "wrangler tail --config servidor/wrangler.toml"
   },
   "repository": {
     "type": "git",
