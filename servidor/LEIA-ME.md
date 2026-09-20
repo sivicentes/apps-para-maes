@@ -76,8 +76,46 @@ servidor/wrangler.toml` — ele mostra os nomes, nunca os valores.
 ```bash
 npm run servidor:codigos
 ```
-Os códigos de acesso, separados por vírgula. Ex.: `CASA2026,TURMA4A`
-Um por turma facilita revogar depois: basta rodar este comando de novo sem ele.
+
+**Este valor você inventa.** Não vem da Cloudflare nem do Google: é a senha da
+porta do seu servidor. Quem tiver ela (e o endereço) usa a IA por sua conta.
+
+Escreva os códigos **separados por vírgula, sem espaço**. A sugestão:
+
+```
+CASA2026,TURMA4A
+```
+
+- `CASA2026` — para os seus aparelhos: seu celular, seu computador, os tablets.
+- `TURMA4A` — o que você vai passar para as mães da turma.
+
+Serve qualquer palavra, contanto que não seja óbvia. Separar assim é o que
+permite cortar o acesso de um grupo sem atrapalhar o outro.
+
+### O que aparece na tela
+
+O terminal pergunta:
+
+```
+✔ Enter a secret value: …
+```
+
+Digite ali e aperte Enter. **O que você digita não aparece** — sai em branco ou
+como bolinhas, igual a campo de senha. É assim mesmo, não é travamento.
+
+### Para mudar depois
+
+Rodar o comando de novo **substitui a lista inteira**, não acrescenta. Então
+para incluir uma turma nova, digite tudo de uma vez:
+
+```
+CASA2026,TURMA4A,TURMA5B
+```
+
+E para tirar o acesso de um grupo, digite a lista sem ele. Vale depois rodar
+`npm run servidor:publicar`. Quem usava o código removido volta a ver "o código
+de acesso não foi aceito" — e ninguém perde dado nenhum, porque o roteiro e o
+progresso estão no aparelho, não no servidor.
 
 ```bash
 npm run servidor:kv
@@ -95,12 +133,21 @@ No fim ele imprime o endereço, algo como
 ## Ligar no aplicativo
 
 No app: **Pais → Inteligência artificial → Servidor**.
-Cole o endereço e um dos códigos, e toque em *Ligar e testar*.
+Cole o endereço e **um** dos códigos, e toque em *Ligar e testar*.
 
-A partir daí aquele aparelho não precisa mais de chave nenhuma. A chave que já estiver
-guardada nele continua servindo de reserva, caso o servidor caia.
+| aparelho | código |
+|---|---|
+| seu celular, seu computador, os tablets | `CASA2026` |
+| o das mães da turma | `TURMA4A` |
 
-Para outra mãe é o mesmo: ela recebe o endereço e o código, e pronto.
+Cada aparelho guarda isso uma vez e não pergunta mais. O código não viaja no
+código de transferência nem no da turma: em aparelho novo, é colar de novo.
+
+A partir daí aquele aparelho não precisa mais de chave nenhuma. A chave que já
+estiver guardada nele continua servindo de reserva, caso o servidor caia.
+
+Para outra mãe é o mesmo: ela recebe o endereço e o código da turma, e pronto.
+Mande os dois pela mesma mensagem — sozinhos, nenhum dos dois serve para nada.
 
 ## Ajustes
 
