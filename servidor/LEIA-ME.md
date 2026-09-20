@@ -1,12 +1,17 @@
-# Servidor (porteiro do Gemini)
+# Servidor (porteiro das IAs)
 
-Guarda a chave do Gemini e responde ao aplicativo. Com ele ligado, **nenhum
-aparelho precisa de chave** — nem o meu, nem o das outras mães.
+Guarda as chaves e responde ao aplicativo. Com ele ligado, **nenhum aparelho
+precisa de chave** — nem o meu, nem o das outras mães.
 
 ```
-app ──> Worker ──chave──> Gemini
-        (a chave só existe aqui)
+                         ┌─ texto (roteiro, explicação, quiz) ─> Groq
+app ──> Worker ──chaves──┤
+                         └─ foto, PDF, vídeo ───────────────> Gemini
 ```
+O Groq é bem mais rápido, mas não enxerga imagem. O Worker escolhe sozinho:
+pedido com foto ou vídeo vai direto no Gemini. Se o Groq falhar por qualquer
+motivo, o Gemini assume sem que o app perceba — e se você não configurar a
+chave do Groq, tudo funciona como antes, só no Gemini.
 
 ## Antes de começar
 
@@ -55,8 +60,18 @@ Abre o navegador. Entre na **conta pessoal**.
 ```bash
 npm run servidor:chave
 ```
-Cola a chave do Gemini quando ele pedir. Ela vai direto para a Cloudflare —
-não passa por arquivo, nem por log, nem por mim.
+Cola a chave do **Gemini** quando ele pedir. Ela vai direto para a Cloudflare —
+não passa por arquivo, nem por log, nem por mim. Esta é a obrigatória: sem ela
+o app não lê foto, PDF nem vídeo.
+
+```bash
+npm run servidor:groq
+```
+A chave do **Groq** (começa com `gsk_`), pega em console.groq.com.
+**Opcional, mas vale a pena:** com ela, o roteiro, a explicação e o quiz ficam
+bem mais rápidos, e as mães da turma ganham isso sem colar chave nenhuma.
+Para conferir depois se as duas estão lá: `npx wrangler secret list --config
+servidor/wrangler.toml` — ele mostra os nomes, nunca os valores.
 
 ```bash
 npm run servidor:codigos
@@ -82,7 +97,7 @@ No fim ele imprime o endereço, algo como
 No app: **Pais → Inteligência artificial → Servidor**.
 Cole o endereço e um dos códigos, e toque em *Ligar e testar*.
 
-A partir daí aquele aparelho não precisa mais de chave. A chave que já estiver
+A partir daí aquele aparelho não precisa mais de chave nenhuma. A chave que já estiver
 guardada nele continua servindo de reserva, caso o servidor caia.
 
 Para outra mãe é o mesmo: ela recebe o endereço e o código, e pronto.
@@ -101,7 +116,7 @@ No `wrangler.toml`:
 ```bash
 npm test
 ```
-39 verificações com um Gemini simulado: nenhuma chamada real, nenhuma chave.
+73 verificações com as duas IAs simuladas: nenhuma chamada real, nenhuma chave.
 
 Para ver o que está acontecendo no servidor de verdade:
 

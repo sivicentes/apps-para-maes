@@ -155,6 +155,108 @@ console.log("\n7. vídeo e JSON");
   eq(chamadas[0].body.generationConfig.responseMimeType, "application/json", "pede JSON quando o app pede");
 }
 
+console.log("\n8. a IA rapida (Groq) no servidor");
+{
+  /* um fetch falso que sabe distinguir os dois destinos */
+  const GROQ = "CHAVE-RAPIDA-DO-SERVIDOR";
+  const rGroq = t => jsonOk({ choices: [{ message: { content: t }, finish_reason: "stop" }] });
+  function duplaFalsa(respGroq, respGemini) {
+    chamadas = [];
+    globalThis.fetch = async (url, opts) => {
+      const u = String(url), alvo = u.includes("groq.com") ? "groq" : "gemini";
+      chamadas.push({ alvo, url: u, headers: opts.headers, body: JSON.parse(opts.body) });
+      const r = alvo === "groq" ? respGroq : respGemini;
+      return typeof r === "function" ? r(u) : r;
+    };
+  }
+  const soGroq = () => chamadas.filter(c => c.alvo === "groq");
+  const soGemini = () => chamadas.filter(c => c.alvo === "gemini");
+  const ENVR = extra => ENV({ GROQ_KEY: GROQ, ...extra });
+
+  // texto puro vai na rapida
+  duplaFalsa(rGroq("O roteiro ficou assim."), RESP("nao era para vir daqui"));
+  let r = await worker.fetch(pedido(CORPO), ENVR());
+  let d = await r.json();
+  eq(r.status, 200, "texto puro responde 200");
+  eq(d.texto, "O roteiro ficou assim.", "com a resposta da IA rapida");
+  eq(d.ia, "groq", "dizendo que foi o Groq");
+  eq(soGemini().length, 0, "e o Gemini nem foi chamado");
+  eq(soGroq()[0].headers.Authorization, "Bearer " + GROQ, "usou a chave rapida do servidor");
+  eq(soGroq()[0].body.messages[0].content, CORPO.prompt, "encaminhou o texto");
+  ok(soGroq()[0].body.max_completion_tokens > 0, "com limite de saida");
+
+  // a chave nao vaza
+  ok(!(await (await worker.fetch(pedido(CORPO), ENVR())).text()).includes("CHAVE-RAPIDA"), "a chave rapida nao aparece na resposta");
+
+  // foto e video pulam a rapida: o Groq nao enxerga
+  duplaFalsa(rGroq("nao era para vir daqui"), RESP("li a foto"));
+  r = await worker.fetch(pedido({ ...CORPO, fotos: [{ tipo: "image/jpeg", dados: "AAAA" }] }), ENVR());
+  d = await r.json();
+  eq(d.texto, "li a foto", "pedido com foto vai direto no Gemini");
+  eq(d.ia, "gemini", "e diz que foi o Gemini");
+  eq(soGroq().length, 0, "sem passar pela IA rapida");
+
+  duplaFalsa(rGroq("nao era para vir daqui"), RESP("vi o video"));
+  r = await worker.fetch(pedido({ ...CORPO, video: "https://www.youtube.com/watch?v=abcdefghijk" }), ENVR());
+  eq((await r.json()).texto, "vi o video", "pedido com video tambem vai no Gemini");
+  eq(soGroq().length, 0, "sem passar pela IA rapida");
+
+  // quando a rapida tropeca, o Gemini assume sem o app perceber
+  duplaFalsa(jsonErro(500, "instabilidade"), RESP("o Gemini resolveu"));
+  r = await worker.fetch(pedido(CORPO), ENVR());
+  d = await r.json();
+  eq(d.texto, "o Gemini resolveu", "Groq fora do ar: o Gemini responde");
+  eq(d.ia, "gemini", "e a resposta diz de onde veio");
+
+  duplaFalsa(jsonErro(401, "chave invalida"), RESP("o Gemini resolveu"));
+  eq((await (await worker.fetch(pedido(CORPO), ENVR())).json()).texto, "o Gemini resolveu", "chave rapida recusada nao quebra nada");
+  eq(soGroq().length, 1, "e nao fica insistindo nos outros modelos");
+
+  duplaFalsa(jsonOk({ choices: [{ message: { content: "metade da resp" }, finish_reason: "length" }] }), RESP("inteiro pelo Gemini"));
+  eq((await (await worker.fetch(pedido(CORPO), ENVR())).json()).texto, "inteiro pelo Gemini", "resposta cortada na rapida vai refazer no Gemini");
+
+  duplaFalsa(jsonOk({ choices: [{ message: { content: "   " }, finish_reason: "stop" }] }), RESP("inteiro pelo Gemini"));
+  eq((await (await worker.fetch(pedido(CORPO), ENVR())).json()).texto, "inteiro pelo Gemini", "resposta em branco na rapida tambem");
+
+  // modelo aposentado: tenta o proximo da lista
+  let nG = 0;
+  duplaFalsa(() => (++nG === 1 ? jsonErro(404, "decommissioned") : rGroq("veio do segundo modelo")), RESP("nao era para vir daqui"));
+  d = await (await worker.fetch(pedido(CORPO), ENVR())).json();
+  eq(d.texto, "veio do segundo modelo", "cai para o proximo modelo rapido");
+  eq(soGroq().length, 2, "depois de tentar dois");
+  ok(soGroq()[0].body.model !== soGroq()[1].body.model, "e sao modelos diferentes");
+
+  // JSON e tamanho
+  duplaFalsa(rGroq('{"provas":[]}'), RESP("x"));
+  await worker.fetch(pedido({ ...CORPO, json: true }), ENVR());
+  eq(soGroq()[0].body.response_format.type, "json_object", "pede JSON quando o app pede");
+
+  duplaFalsa(rGroq("ok"), RESP("x"));
+  await worker.fetch(pedido({ ...CORPO, prompt: "y".repeat(200000) }), ENVR());
+  ok(soGroq()[0].body.messages[0].content.length <= 60000, "corta texto grande demais");
+
+  // sem GROQ_KEY tudo segue como antes
+  duplaFalsa(rGroq("nao era para vir daqui"), RESP("so Gemini aqui"));
+  d = await (await worker.fetch(pedido(CORPO), ENV())).json();
+  eq(d.texto, "so Gemini aqui", "sem a chave rapida, tudo vai no Gemini");
+  eq(soGroq().length, 0, "sem tentar o Groq");
+
+  // servidor so com a chave rapida: texto funciona, foto avisa
+  duplaFalsa(rGroq("dei conta do texto"), RESP("nao era para vir daqui"));
+  const SOR = ENV({ GEMINI_KEY: "", GROQ_KEY: GROQ });
+  eq((await (await worker.fetch(pedido(CORPO), SOR)).json()).texto, "dei conta do texto", "so com a chave rapida, o texto funciona");
+  r = await worker.fetch(pedido({ ...CORPO, fotos: [{ tipo: "image/jpeg", dados: "AAAA" }] }), SOR);
+  eq(r.status, 500, "mas foto avisa que falta a chave que enxerga");
+  eq((await r.json()).erro, "sem_chave", "dizendo que e falta de chave");
+
+  // o teto diario conta tambem os pedidos rapidos
+  const KV = kvFalso(), envT = ENVR({ KV });
+  duplaFalsa(rGroq("ok"), RESP("x"));
+  for (let i = 1; i <= 3; i++) eq((await worker.fetch(pedido(CORPO), envT)).status, 200, "pedido rapido " + i + " de 3 passa");
+  eq((await worker.fetch(pedido(CORPO), envT)).status, 429, "o quarto e barrado pelo teto, mesmo sendo rapido");
+  eq(soGroq().length, 3, "e a IA rapida so foi chamada 3 vezes");
+}
+
 globalThis.fetch = real;
 console.log(`\n${passou} passaram, ${falhou} falharam`);
 process.exit(falhou ? 1 : 0);

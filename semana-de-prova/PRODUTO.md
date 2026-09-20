@@ -43,7 +43,8 @@ Os códigos são comprimidos pelo próprio navegador, o que os deixa cerca de de
 1. Na aba Provas, toca em "Ler o comunicado" e junta tudo o que recebeu: foto, print, PDF, Word (.docx) ou texto colado de mensagem. Pode juntar arquivos de várias professoras e ler de uma vez. **[hoje]**
 2. O app extrai cada prova: matéria, data, o que cai, páginas indicadas e links que a professora mandou (inclusive links escondidos em "clique aqui"). **[hoje]**
 3. A mãe confere, principalmente as datas, e corrige em "Editar" se precisar. Também pode adicionar uma prova na mão. **[hoje]**
-4. Em cada prova, envia o material de estudo: fotos das páginas (uma página por foto, com boa luz), PDF, Word ou texto colado. O app lê e guarda um resumo condensado do conteúdo, não a foto. **[hoje]**
+4. Em cada prova, envia o material de estudo: fotos das páginas, PDF, Word ou texto colado. O app lê e guarda um resumo condensado do conteúdo, não a foto. **[hoje]**
+4b. **A câmera é do próprio app e fica aberta.** Cada toque no disparador guarda mais uma página, sem sair para a galeria e sem voltar para a tela a cada foto: dá para fotografar a apostila inteira de uma vez, virando página e tocando. As miniaturas aparecem embaixo numeradas, e uma foto ruim pode ser apagada ali mesmo. No fim, "Pronto" fecha a câmera e a fila inteira é lida numa única chamada de IA. Se o navegador não liberar a câmera, o app cai na câmera do sistema, uma foto por vez. **[hoje]**
 4a. Ao ler as páginas, o app também identifica de que material elas vieram (sistema ou editora, volume, edição) e separa o conteúdo em blocos por assunto, guardando a página apenas como referência de onde aquilo está. A mãe vê o material identificado no cartão da prova e pode corrigi-lo em "Editar". Isso é o que vai permitir, na fase de turmas, reaproveitar o conteúdo já lido por outra mãe sem processar tudo de novo. **[hoje]**
 5. Se a professora indicou vídeo do YouTube, toca em "Ler este vídeo para o quiz". A IA assiste e o resumo do vídeo entra no material da prova. Só funciona com vídeo público. **[hoje, sem teste real ainda]**
 6. Monta o roteiro: de todas as provas de uma vez, ou de uma prova só ("Montar roteiro desta prova"), indo aos poucos. Cada cartão mostra se a prova está "no roteiro" ou "fora do roteiro". **[hoje]**
@@ -76,9 +77,12 @@ Em Pais, "Compartilhar com a turma" copia um código com o que é da turma: prov
 
 Essa é a versão de hoje do compartilhamento: resolve a turma agora, sem servidor, com o mesmo formato de dados que a Fase 2 vai usar.
 
-### O servidor (porteiro da IA) **[hoje, a ligar]**
+### O servidor (porteiro das IAs) **[hoje, a ligar]**
 
-O Worker na Cloudflare guarda a chave do Gemini como secret. O app manda o pedido para ele, que acrescenta a chave e chama o Gemini. **Nenhum aparelho precisa de chave** — nem o da mãe que montou, nem o das outras.
+O Worker na Cloudflare guarda as chaves como secret. O app manda o pedido para ele, que acrescenta a chave e chama a IA. **Nenhum aparelho precisa de chave** — nem o da mãe que montou, nem o das outras.
+
+- O Worker faz a mesma divisão que o app faz: texto puro (roteiro, explicação, quiz) vai no Groq, que é bem mais rápido; foto, PDF em imagem e vídeo vão no Gemini. Se o Groq falhar, ficar sem modelo ou devolver resposta cortada, o Gemini assume sem que o app perceba. A chave do Groq é opcional: sem ela, tudo vai no Gemini como antes.
+- O diário técnico do app mostra qual das duas atendeu cada pedido, para dar para auditar quando algo demorar.
 
 - Ligado em Pais → Inteligência artificial → Servidor: endereço e código de acesso, uma vez por aparelho.
 - O app funciona nos dois modos. Se o servidor cair por motivo técnico, ele usa a chave própria como reserva, quando houver uma. Erro que é decisão do servidor (código inválido, cota do dia) não tenta de novo pela chave.
@@ -161,7 +165,8 @@ O app **oferece**, não manda. Todo o estudo de cada prova aparece de uma vez, e
 - **Sessão**: links da professora, passos, explicação, quiz.
 - **Quiz** e **Resultado**.
 - **Provas**: comunicados, cartão de cada prova (data, assuntos, páginas, links, situação do material e do roteiro), envio de material, roteiro por prova e geral.
-- **Comunicados**: fila de arquivos e campo para colar texto.
+- **Comunicados**: câmera, fila de arquivos e campo para colar texto.
+- **Câmera**: tela cheia, sobre o app. Contador de fotos, miniaturas numeradas com apagar, disparador grande, "Pronto" e "Cancelar". Trava sozinha quando a fila enche.
 - **Material da prova**: colar texto.
 - **Editar prova**: matéria, data, o que cai, páginas e links.
 - **Pais** (com senha): provas e material, progresso por matéria, as duas IAs, ajustes do roteiro, ritmo de cada filho, crianças, cópia de segurança, diário técnico e nova semana.
@@ -170,17 +175,18 @@ O app **oferece**, não manda. Todo o estudo de cada prova aparece de uma vez, e
 
 Faz: lê comunicados e páginas (foto, PDF, Word, texto), assiste a vídeo público do YouTube, extrai provas e links, condensa o conteúdo, identifica de que material as páginas vieram, monta o roteiro, explica e cria perguntas.
 
-São duas IAs, com divisão clara: tudo que exige **enxergar** (foto, PDF, vídeo) vai para o Gemini, que é o único gratuito capaz de ler vídeo do YouTube direto do endereço. Roteiro, explicação e quiz trabalham só em cima do texto já extraído e podem ir para uma segunda IA mais rápida (Groq). Se a segunda IA falhar ou não estiver ligada, tudo volta para o Gemini sozinho.
+São duas IAs, com divisão clara: tudo que exige **enxergar** (foto, PDF, vídeo) vai para o Gemini, que é o único gratuito capaz de ler vídeo do YouTube direto do endereço. Roteiro, explicação e quiz trabalham só em cima do texto já extraído e vão para uma segunda IA mais rápida (Groq), seja pela chave do aparelho, seja pelo servidor. Se a segunda IA falhar ou não estiver ligada, tudo volta para o Gemini sozinho.
 
 Não faz: não substitui a professora nem o livro; pode errar, principalmente em datas, em links lidos de foto e em fotos ruins; não lê vídeo privado ou não listado; não lê o formato antigo `.doc`. Por isso o app sempre deixa a mãe conferir e corrigir, e avisa na aba Pais que o conteúdo é gerado por IA.
 
 ## 10. Privacidade e cuidados
 
 - Nome, progresso, notas e erros da criança ficam só no aparelho. O nome nunca é enviado à IA; só o ano escolar.
-- Fotos não são guardadas; fica apenas o texto condensado.
+- Fotos não são guardadas; fica apenas o texto condensado. A câmera do app só fica ligada enquanto a tela dela está aberta, nada é gravado, e ao fechar o aparelho desliga a câmera de verdade. As fotos da fila vivem só na memória até serem lidas.
+- Em navegador, a câmera dentro do app só funciona em endereço seguro (https). No link do GitHub Pages funciona; abrindo o arquivo direto do computador, não — e aí o app usa a câmera do sistema.
 - O app orienta a cortar da foto o nome completo da criança.
 - O conteúdo guardado é resumo de estudo, não reprodução de páginas de livro.
-- A chave da IA fica só no aparelho e fora da cópia de segurança.
+- As chaves de IA ficam só no aparelho e fora da cópia de segurança. Com o servidor ligado, elas nem existem no aparelho: ficam como secret na Cloudflare.
 - Antes de abrir para outras famílias [planejado]: nível pago da IA (para o conteúdo não ser usado em treinamento), aviso curto de privacidade, termos, código de acesso por turma e limite de uso por aparelho. Envolve dados de crianças, então LGPD é requisito.
 
 ## 11. Fora do escopo por enquanto

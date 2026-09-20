@@ -1,7 +1,12 @@
-/* Porteiro do Gemini para o Semana de Prova.
+/* Porteiro das IAs para o Semana de Prova.
  *
- * O aplicativo nunca ve a chave: ele manda o pedido para ca, este Worker
- * acrescenta a chave (guardada como secret na Cloudflare) e chama o Gemini.
+ * O aplicativo nunca ve as chaves: ele manda o pedido para ca, este Worker
+ * acrescenta a chave (guardada como secret na Cloudflare) e chama a IA.
+ *
+ * Quem atende o que:
+ *   texto puro (roteiro, explicacao, quiz) -> Groq, que e bem mais rapido
+ *   foto, PDF em imagem, video do YouTube  -> Gemini, o unico que enxerga
+ * Sem GROQ_KEY configurada, tudo vai no Gemini como antes.
  *
  * Protecoes, da mais forte para a mais fraca:
  *   1. teto diario por aparelho e por codigo  -> e o que realmente segura
@@ -13,6 +18,11 @@
 
 const GAPI = "https://generativelanguage.googleapis.com/v1beta/models/";
 const MODELOS = ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-flash-latest", "gemini-2.5-flash"];
+
+/* segunda IA: so texto, e bem mais rapida. Roteiro, explicacao e quiz
+   passam por aqui quando a GROQ_KEY estiver configurada. */
+const RAPI = "https://api.groq.com/openai/v1/chat/completions";
+const RMODELOS = ["llama-3.3-70b-versatile", "openai/gpt-oss-120b", "qwen/qwen3-32b", "llama-3.1-8b-instant"];
 
 const MAX_PROMPT = 60000;   // caracteres
 const MAX_FOTOS = 6;
@@ -78,6 +88,43 @@ function configModelo(g, modelo) {
   return c;
 }
 
+/* Tenta a IA rapida. So entra quando o pedido e texto puro: o Groq nao
+   enxerga foto nem video. Qualquer tropeco devolve null sem barulho, e o
+   pedido segue para o Gemini como sempre — o app nem fica sabendo. */
+async function tentarGroq(p, env) {
+  if (!env.GROQ_KEY) return null;
+  if (p.video || (Array.isArray(p.fotos) && p.fotos.length)) return null;
+  const candidatos = [...new Set([p.modeloRapido, ...RMODELOS].filter(Boolean))].slice(0, 3);
+  for (const modelo of candidatos) {
+    let r;
+    try {
+      r = await fetch(RAPI, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + env.GROQ_KEY },
+        body: JSON.stringify({
+          model: modelo,
+          messages: [{ role: "user", content: String(p.prompt).slice(0, MAX_PROMPT) }],
+          max_completion_tokens: p.json ? 8192 : 4096,
+          ...(p.json ? { response_format: { type: "json_object" } } : {}),
+        }),
+      });
+    } catch (e) { return null; }
+
+    if (r.ok) {
+      const d = await r.json().catch(() => ({}));
+      const c = (d.choices || [])[0];
+      const texto = String((c && c.message && c.message.content) || "").trim();
+      /* cortado ou em branco: o Gemini tem mais folego, deixa com ele */
+      if (!texto || (c && c.finish_reason === "length")) return null;
+      return { texto, modelo };
+    }
+    /* modelo aposentado ou minuto cheio: tenta o proximo da lista */
+    if (r.status === 404 || r.status === 429 || r.status >= 500) continue;
+    return null;   // chave recusada ou pedido invalido: nao insiste
+  }
+  return null;
+}
+
 export default {
   async fetch(req, env) {
     const origem = req.headers.get("Origin") || "";
@@ -91,10 +138,15 @@ export default {
     const codigo = String(p.codigo || "").trim();
     if (!codigoOk(codigo, env)) return resp({ erro: "codigo", mensagem: "Codigo de acesso invalido." }, 401, origem, env);
     if (typeof p.prompt !== "string" || !p.prompt.trim()) return resp({ erro: "vazio" }, 400, origem, env);
-    if (!env.GEMINI_KEY) return resp({ erro: "sem_chave", mensagem: "O servidor esta sem a chave configurada." }, 500, origem, env);
+    if (!env.GEMINI_KEY && !env.GROQ_KEY) return resp({ erro: "sem_chave", mensagem: "O servidor esta sem a chave configurada." }, 500, origem, env);
 
     const c = await cota(env, codigo, String(p.aparelho || "").slice(0, 40));
     if (!c.ok) return resp({ erro: "cota", mensagem: "Limite de " + c.teto + " pedidos por dia atingido neste aparelho. Amanha volta.", usado: c.usado, teto: c.teto }, 429, origem, env);
+
+    /* texto puro vai primeiro na IA rapida; foto e video pulam direto */
+    const rapido = await tentarGroq(p, env);
+    if (rapido) return resp({ texto: rapido.texto, modelo: rapido.modelo, ia: "groq", usado: c.usado, teto: c.teto, semContagem: c.semContagem }, 200, origem, env);
+    if (!env.GEMINI_KEY) return resp({ erro: "sem_chave", mensagem: "O servidor so tem a chave rapida, que nao le foto nem video." }, 500, origem, env);
 
     const base = montarPedido(p);
     const candidatos = [...new Set([p.modelo, ...MODELOS].filter(Boolean))].slice(0, 4);
@@ -121,7 +173,7 @@ export default {
           const bloqueio = (d.promptFeedback && d.promptFeedback.blockReason) || /SAFETY|PROHIBITED|BLOCK/.test(fim);
           return resp({ erro: bloqueio ? "recusado" : "vazio_ia" }, 200, origem, env);
         }
-        return resp({ texto, modelo, usado: c.usado, teto: c.teto, semContagem: c.semContagem }, 200, origem, env);
+        return resp({ texto, modelo, ia: "gemini", usado: c.usado, teto: c.teto, semContagem: c.semContagem }, 200, origem, env);
       }
 
       const err = await r.json().catch(() => ({}));

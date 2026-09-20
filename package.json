@@ -7,6 +7,7 @@
     "test": "node semana-de-prova/tests/smoke.mjs",
     "servidor:login": "wrangler login --config servidor/wrangler.toml",
     "servidor:chave": "wrangler secret put GEMINI_KEY --config servidor/wrangler.toml",
+    "servidor:groq": "wrangler secret put GROQ_KEY --config servidor/wrangler.toml",
     "servidor:codigos": "wrangler secret put CODIGOS --config servidor/wrangler.toml",
     "servidor:kv": "wrangler kv namespace create USO --config servidor/wrangler.toml",
     "servidor:conferir": "wrangler deploy --dry-run --config servidor/wrangler.toml",

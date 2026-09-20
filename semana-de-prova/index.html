@@ -169,6 +169,27 @@ textarea{min-height:88px;resize:vertical}
 @media (prefers-reduced-motion:reduce){.pencil{animation:none}.bar i{transition:none}}
 .toast[hidden]{display:none}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--paper);border-radius:12px;padding:10px 16px;font-weight:700;z-index:30;max-width:90%}
+/* camera em lote: fica fora do #app, entao o render() nao a destroi */
+.cam{position:fixed;inset:0;z-index:60;background:#000;display:flex;flex-direction:column}
+.cam video{flex:1;width:100%;min-height:0;object-fit:contain;background:#000}
+.cam .topo{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:calc(10px + env(safe-area-inset-top,0px)) 14px 10px;color:#fff;font-family:var(--display);font-weight:700}
+.cam .topo .qtd{background:var(--mark);color:var(--ink);border-radius:999px;padding:3px 12px;font-size:.9rem}
+.cam .topo button{background:none;border:none;color:#fff;font:inherit;font-size:1rem;padding:8px;cursor:pointer}
+.cam .tiras{display:flex;gap:6px;overflow-x:auto;padding:8px 14px;background:#000;min-height:0}
+.cam .tiras figure{position:relative;margin:0;flex:0 0 auto}
+.cam .tiras img{height:54px;width:auto;border-radius:8px;display:block;border:2px solid #fff3}
+.cam .tiras b{position:absolute;left:3px;bottom:3px;background:#000b;color:#fff;border-radius:6px;font-size:.7rem;padding:0 5px}
+.cam .tiras button{position:absolute;top:-4px;right:-4px;width:22px;height:22px;border-radius:999px;border:none;background:var(--bad);color:#fff;font-size:.8rem;line-height:1;cursor:pointer;padding:0}
+.cam .baixo{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 22px calc(18px + env(safe-area-inset-bottom,0px));background:#000}
+.cam .disp{width:72px;height:72px;border-radius:999px;background:#fff;border:5px solid #fff6;cursor:pointer;flex:0 0 auto;padding:0}
+.cam .disp:active{transform:scale(.94)}
+.cam .disp[disabled]{opacity:.4}
+.cam .lado{min-width:92px;color:#fff;font-size:.9rem;font-weight:700;background:none;border:none;cursor:pointer;padding:10px}
+.cam .lado.ok{background:var(--mark);color:var(--ink);border-radius:999px;padding:12px 18px}
+.cam .aviso{color:#fff;text-align:center;padding:20px;font-size:.95rem;line-height:1.5}
+.cam .flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:2}
+.cam .flash.on{animation:pisca .22s ease-out}
+@keyframes pisca{from{opacity:.85}to{opacity:0}}
 .links h3{margin:4px 0 6px}
 .lk{display:flex;gap:10px;align-items:center;border:2px solid var(--blue);background:var(--blue-soft);color:var(--ink);border-radius:14px;padding:10px 12px;margin:8px 0;text-decoration:none;min-height:52px}
 .lk .ic{font-size:1.5rem}
@@ -182,6 +203,17 @@ ul.plain{margin:.3em 0;padding-left:1.2em}
 <div id="toast" class="toast" role="status" hidden></div>
 <input type="file" id="file" accept="image/*,application/pdf,.pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple hidden>
 <input type="file" id="cam" accept="image/*" capture="environment" hidden>
+<div id="camera" class="cam" hidden>
+  <div class="topo"><button type="button" id="camsai">✕ Cancelar</button><span id="camqtd" class="qtd">0 fotos</span></div>
+  <video id="camvid" playsinline autoplay muted></video>
+  <div class="flash" id="camflash"></div>
+  <div class="tiras" id="camtiras"></div>
+  <div class="baixo">
+    <span class="lado" id="camdica">uma página por foto</span>
+    <button type="button" class="disp" id="camtira" aria-label="Tirar foto"></button>
+    <button type="button" class="lado ok" id="camok">Pronto</button>
+  </div>
+</div>
 
 <script>
 "use strict";
@@ -394,6 +426,8 @@ const SRVERR = {
 };
 /* erros que NAO adianta repetir na chave propria: sao decisao do servidor */
 const SRVFINAL = ["codigo", "cota", "origem", "cortado", "recusado", "vazio_ia", "video", "limite_google"];
+/* qual IA o servidor usou no ultimo pedido, so para o diario tecnico */
+let srvUltimo = "";
 
 let servidor = async function (prompt, o, wantJson) {
   const fotos = [];
@@ -407,7 +441,11 @@ let servidor = async function (prompt, o, wantJson) {
     });
   } catch (e) { throw { code: e && e.name === "AbortError" ? "cancelled" : "servidor_fora" }; }
   let d; try { d = await r.json(); } catch (e) { throw { code: "servidor_fora" }; }
-  if (d && d.texto) { SRV.usado = d.usado; SRV.teto = d.teto; SRV.semContagem = d.semContagem; saveSrv(); return d.texto; }
+  if (d && d.texto) {
+    SRV.usado = d.usado; SRV.teto = d.teto; SRV.semContagem = d.semContagem; saveSrv();
+    srvUltimo = (d.ia === "groq" ? "Groq" : "Gemini") + (d.modelo ? " · " + d.modelo : "");
+    return d.texto;
+  }
   const e = String((d && d.erro) || "servidor_fora");
   throw { code: "srv_" + e, message: (d && d.mensagem) || "", final: SRVFINAL.includes(e) };
 }
@@ -417,7 +455,7 @@ const errServidor = e => {
 };
 /* o diario tecnico registra tambem os pedidos que vao pelo servidor */
 const servidorRaw = servidor;
-servidor = (prompt, o, wantJson) => logged("Servidor", () => "gemini pelo Worker", prompt, o, () => servidorRaw(prompt, o, wantJson));
+servidor = (prompt, o, wantJson) => { srvUltimo = ""; return logged("Servidor", () => srvUltimo || "pelo Worker", prompt, o, () => servidorRaw(prompt, o, wantJson)); };
 /* Groq nao enxerga: foto, PDF e video continuam sempre no Gemini. */
 const useFast = o => !!R.key && !o.images && !o.video;
 
@@ -525,6 +563,99 @@ async function gather(files) {
 }
 function pickFiles(cam) {
   return new Promise(res => { const inp = $(cam ? "#cam" : "#file"); inp.value = ""; inp.onchange = () => res(Array.from(inp.files || [])); inp.click(); });
+}
+
+/* ============ camera em lote ============
+   Abre a camera dentro do app e fica aberta: cada toque no disparador guarda
+   mais uma pagina na fila, sem sair. No fim, "Pronto" fecha e devolve tudo de
+   uma vez. A tela fica fora do #app de proposito, senao o render() a destruiria
+   no meio da sessao de fotos.
+   Se o navegador nao der acesso a camera (permissao negada, aparelho sem
+   camera, pagina fora de HTTPS), cai na camera do sistema, uma foto por vez,
+   que e como funcionava antes. */
+let camStream = null;
+
+const temCameraViva = () => !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.HTMLCanvasElement);
+
+function camFecha() {
+  if (camStream) { try { camStream.getTracks().forEach(t => t.stop()); } catch (e) {} camStream = null; }
+  const v = $("#camvid"); if (v) { try { v.pause(); } catch (e) {} v.srcObject = null; }
+  $("#camera").hidden = true;
+}
+
+/* desenha o quadro atual num JPG de no maximo 1600px, igual ao shrink() */
+function camQuadro(video) {
+  const w = video.videoWidth || 0, h = video.videoHeight || 0;
+  if (!w || !h) return null;
+  const sc = Math.min(1, 1600 / Math.max(w, h));
+  const c = document.createElement("canvas");
+  c.width = Math.round(w * sc); c.height = Math.round(h * sc);
+  c.getContext("2d").drawImage(video, 0, 0, c.width, c.height);
+  return c;
+}
+function camArquivo(blob, n) {
+  const nome = "pagina-" + pad(n) + ".jpg";
+  try { return new File([blob], nome, { type: "image/jpeg" }); } catch (e) { blob.name = nome; return blob; }
+}
+
+async function abrirCamera(limite) {
+  if (!temCameraViva()) { const fs = await pickFiles(true); return fs.slice(0, Math.max(0, limite - ui.files.length)); }
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1440 } }, audio: false });
+  } catch (e) {
+    toast("Não consegui abrir a câmera aqui. Vou usar a do aparelho, uma foto por vez.");
+    const fs = await pickFiles(true); return fs.slice(0, Math.max(0, limite - ui.files.length));
+  }
+  camStream = stream;
+  const tela = $("#camera"), video = $("#camvid"), tiras = $("#camtiras"), qtd = $("#camqtd"),
+    disp = $("#camtira"), flash = $("#camflash"), jaTinha = ui.files.length;
+  video.srcObject = stream;
+  try { await video.play(); } catch (e) {}
+  tela.hidden = false;
+
+  const novas = [];
+  const pinta = () => {
+    const n = novas.length;
+    qtd.textContent = n === 1 ? "1 foto" : n + " fotos";
+    disp.disabled = jaTinha + n >= limite;
+    $("#camdica").textContent = disp.disabled ? "fila cheia (" + limite + ")" : n ? "toque para a próxima" : "uma página por foto";
+    tiras.innerHTML = novas.map((f, i) =>
+      '<figure><img alt="" src="' + f.url + '"><b>' + (jaTinha + i + 1) + '</b><button type="button" data-i="' + i + '" aria-label="Apagar esta foto">✕</button></figure>').join("");
+  };
+  pinta();
+
+  return await new Promise(pronto => {
+    const solta = () => {
+      disp.onclick = null; tiras.onclick = null; $("#camok").onclick = null; $("#camsai").onclick = null;
+      document.removeEventListener("keydown", tecla);
+      novas.forEach(f => { try { URL.revokeObjectURL(f.url); } catch (e) {} });
+      camFecha();
+    };
+    const fim = entrega => { const r = entrega ? novas.map(f => f.file) : []; solta(); pronto(r); };
+    const tecla = ev => { if (ev.key === "Escape") fim(true); };
+
+    disp.onclick = async () => {
+      if (jaTinha + novas.length >= limite) return;
+      const c = camQuadro(video);
+      if (!c) return toast("A câmera ainda está abrindo. Tente de novo em um segundo.");
+      flash.classList.remove("on"); void flash.offsetWidth; flash.classList.add("on");
+      const blob = await new Promise(r => c.toBlob(r, "image/jpeg", 0.85));
+      if (!blob) return toast("Não consegui guardar essa foto. Tente de novo.");
+      const file = camArquivo(blob, jaTinha + novas.length + 1);
+      novas.push({ file, url: URL.createObjectURL(blob) });
+      pinta();
+    };
+    tiras.onclick = ev => {
+      const b = ev.target.closest("button[data-i]"); if (!b) return;
+      const [f] = novas.splice(+b.dataset.i, 1);
+      if (f) { try { URL.revokeObjectURL(f.url); } catch (e) {} }
+      pinta();
+    };
+    $("#camok").onclick = () => fim(true);
+    $("#camsai").onclick = () => fim(false);
+    document.addEventListener("keydown", tecla);
+  });
 }
 
 /* ============ 1. ler o comunicado ============ */
@@ -1174,7 +1305,7 @@ function vExamDet() {
 function vNotice() {
   return '<button class="link" data-a="back">‹ Voltar</button><h1>Comunicados das provas</h1><p class="muted">Foto, print, PDF ou Word (.docx). Junte aqui os avisos de todas as professoras e leia tudo de uma vez.</p>' +
     '<div class="card">' + (ui.files.length ? '<h3>Arquivos escolhidos</h3>' + ui.files.map((f, i) => '<div class="row between" style="padding:6px 0;border-bottom:1.5px dashed var(--line)"><span class="grow" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (isPdf(f) ? "📕 " : isDocx(f) ? "📘 " : "🖼️ ") + esc(f.name || "foto") + '</span><button class="link" data-a="rmfile" data-i="' + i + '">tirar</button></div>').join("") : "") +
-    '<div class="btns"><button class="btn block' + (ui.files.length ? "" : " pri") + '" data-a="noticefile">＋ ' + (ui.files.length ? "Adicionar mais arquivos" : "Escolher arquivos") + '</button></div><label for="ntext">Veio por mensagem? Cole o texto aqui</label><textarea id="ntext" placeholder="Ex.: 22/09 Matemática: frações, págs. 40 a 52…">' + esc(ui.form.ntext || "") + '</textarea><div class="btns"><button class="btn pri block" data-a="noticego">Ler os comunicados</button></div></div>' +
+    '<div class="btns"><button class="btn block' + (ui.files.length ? "" : " pri") + '" data-a="noticecam">📷 Tirar foto do comunicado</button><button class="btn block" data-a="noticefile">＋ ' + (ui.files.length ? "Adicionar mais arquivos" : "Escolher arquivos") + '</button></div><label for="ntext">Veio por mensagem? Cole o texto aqui</label><textarea id="ntext" placeholder="Ex.: 22/09 Matemática: frações, págs. 40 a 52…">' + esc(ui.form.ntext || "") + '</textarea><div class="btns"><button class="btn pri block" data-a="noticego">Ler os comunicados</button></div></div>' +
     '<p class="small muted">As imagens são lidas pelo Gemini (Google) e não ficam guardadas: o app salva só o texto, neste aparelho. Se puder, corte da foto o nome completo da criança.</p>';
 }
 function vPaste() {
@@ -1339,7 +1470,7 @@ function vPAjustes() {
 }
 function vPIA() {
   let h = subHead("Inteligência artificial");
-  h += '<div class="card"><h2>Servidor <span class="small muted" style="font-weight:600">sem chave no aparelho</span></h2><p class="small muted">Com o servidor ligado, a chave fica guardada lá e este aparelho nunca precisa dela. É assim que as outras mães vão usar.</p>' +
+  h += '<div class="card"><h2>Servidor <span class="small muted" style="font-weight:600">sem chave no aparelho</span></h2><p class="small muted">Com o servidor ligado, as chaves ficam guardadas lá e este aparelho nunca precisa delas. Ele já usa as duas IAs: a rápida para o roteiro, a explicação e o quiz, e o Gemini para as fotos e os vídeos. É assim que as outras mães vão usar.</p>' +
     (temServidor()
       ? '<p class="small"><span class="tag ok">ligado</span> ' + esc(String(SRV.url).replace(/^https?:\/\//, "").slice(0, 40)) + '</p>' +
         (SRV.semContagem ? '<p class="small muted">Sem contagem de uso: o servidor está sem o teto diário ligado.</p>'
@@ -1356,6 +1487,7 @@ function vPIA() {
         '<div class="acts"><button class="btn ghost danger" data-a="goff">Desligar e apagar a chave</button></div>'
       : '<label for="gkey">Chave do Gemini</label><input id="gkey" type="password" autocomplete="off" placeholder="Cole a chave (começa com AQ. ou AIza)"><div class="acts"><button class="btn pri" data-a="gsave">Salvar e testar</button></div><p class="small muted">Pegue em aistudio.google.com. Se você já configurou em outro aparelho, lá em Pais tem "mostrar a chave" para copiar.</p>') + "</div>";
   h += '<div class="card"><h2>Groq <span class="small muted" style="font-weight:600">opcional</span></h2><p class="small muted">Cuida do roteiro, da explicação e do quiz, que ficam bem mais rápidos nele. Não enxerga foto nem vídeo.</p>' +
+    (temServidor() && !R.key ? '<p class="small muted">O servidor já faz isso por este aparelho. Só vale colar a chave aqui se você quiser que ele funcione mesmo com o servidor fora do ar.</p>' : "") +
     (R.key
       ? '<p class="small"><span class="tag ok">ligada</span> ' + esc(R.model || (R.models || [])[0] || "Groq") + '</p>' +
         '<div class="acts two"><button class="btn" data-a="rshow">' + (ui.showKey === "r" ? "Esconder a chave" : "👁️ Mostrar a chave") + '</button><button class="btn" data-a="rcopy">📋 Copiar a chave</button></div>' +
@@ -1408,9 +1540,9 @@ function vDiag() {
   return h;
 }function vPages() {
   const e = examOf(ui.arg); if (!e) { ui.screen = null; return vProvas(); }
-  return '<button class="link" data-a="back">\u2039 Voltar</button><h1>P\u00e1ginas de ' + esc(e.subject) + '</h1><p class="muted">Tire uma foto por p\u00e1gina, na ordem. Elas se juntam aqui e s\u00e3o lidas todas de uma vez.</p>' +
+  return '<button class="link" data-a="back">\u2039 Voltar</button><h1>P\u00e1ginas de ' + esc(e.subject) + '</h1><p class="muted">A c\u00e2mera fica aberta: tire uma foto por p\u00e1gina, na ordem, sem sair. No fim, toque em <b>Pronto</b> e todas s\u00e3o lidas de uma vez.</p>' +
     '<div class="card">' + (ui.files.length ? "<h3>" + ui.files.length + ' p\u00e1gina(s) na fila</h3><div style="max-height:260px;overflow:auto">' + ui.files.map((f, i) => '<div class="row between" style="padding:6px 0;border-bottom:1.5px dashed var(--line)"><span class="grow small" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (i + 1) + ". " + (isPdf(f) ? "\ud83d\udcd5 " : isDocx(f) ? "\ud83d\udcd8 " : "\ud83d\uddbc\ufe0f ") + esc(f.name || "foto") + '</span><button class="link" data-a="rmfile" data-i="' + i + '">tirar</button></div>').join("") + "</div>" : '<p class="muted small">Nenhuma p\u00e1gina na fila ainda.</p>') +
-    '<div class="btns"><button class="btn pri block" data-a="pagecam">\ud83d\udcf7 Tirar foto da p\u00e1gina</button><button class="btn block" data-a="pagefile">\ud83d\uddbc\ufe0f Escolher do aparelho</button></div>' +
+    '<div class="btns"><button class="btn pri block" data-a="pagecam">\ud83d\udcf7 ' + (ui.files.length ? "Tirar mais fotos" : "Abrir a c\u00e2mera") + '</button><button class="btn block" data-a="pagefile">\ud83d\uddbc\ufe0f Escolher do aparelho</button></div>' +
     (ui.files.length ? '<div class="btns"><button class="btn pri block" data-a="pagesgo">Ler as ' + ui.files.length + ' p\u00e1gina(s)</button></div>' : "") + "</div>" +
     '<p class="small muted">As fotos s\u00e3o lidas pelo Gemini e n\u00e3o ficam guardadas: o app salva s\u00f3 o texto, neste aparelho. Se puder, corte da foto o nome completo da crian\u00e7a.</p>';
 }function render() {
@@ -1459,6 +1591,7 @@ const A = {
   ], "Vai perder tudo de " + x.name + ": " + x.exams.length + " prova(s), " + x.sessions.length + " parte(s) e " + nq + " quiz(es), com o hist\u00f3rico de acertos e erros. N\u00e3o tem como desfazer."); },
     notice() { ui.form = {}; ui.files = []; ui.screen = "notice"; },
   async noticefile() { const files = await pickFiles(); keepForm(); for (const f of files) if (ui.files.length < 12) ui.files.push(f); render(); },
+  async noticecam() { keepForm(); const files = await abrirCamera(12); for (const f of files) if (ui.files.length < 12) ui.files.push(f); render(); },
   rmfile(d) { ui.files.splice(+d.i, 1); },
   noticego() { const t = (ui.form.ntext || "").trim(); if (!ui.files.length && t.length < 10) return toast("Escolha os arquivos ou cole o texto do aviso."); readNotice(ui.files.slice(), t); },
   addexam() { ui.form = {}; ui.screen = "exam"; },
@@ -1467,7 +1600,7 @@ const A = {
   delexam() { const k = kid(), id = ui.form.id; confirmBox("Apagar esta prova e as sessões dela?", () => { k.exams = k.exams.filter(e => e.id !== id); k.sessions = k.sessions.filter(s => s.examId !== id); save(); ui.screen = null; ui.form = {}; }, "Apagar"); },
   clearpages() { const e = examOf(ui.form.id); if (!e) return; confirmBox("Apagar o conte\u00fado lido das p\u00e1ginas desta prova?", () => { e.content = ""; e.blocks = []; e.material = null; e.nPages = 0; ui.form.nPages = 0; save(); }, "Apagar"); },
   pages(d) { ui.form = {}; ui.files = []; ui.arg = d.id; ui.screen = "pages"; window.scrollTo(0, 0); },
-  async pagecam() { const files = await pickFiles(true); for (const f of files) if (ui.files.length < 24) ui.files.push(f); render(); },
+  async pagecam() { const files = await abrirCamera(24); for (const f of files) if (ui.files.length < 24) ui.files.push(f); render(); if (files.length) toast(files.length === 1 ? "1 página na fila." : files.length + " páginas na fila."); },
   async pagefile() { const files = await pickFiles(false); for (const f of files) if (ui.files.length < 24) ui.files.push(f); render(); },
   pagesgo() { if (!ui.files.length) return toast("Tire ou escolha ao menos uma p\u00e1gina."); readPages(ui.arg, ui.files.slice()); },
   diag(d) { ui.arg = d.id; ui.openBlock = null; ui.screen = "diag"; window.scrollTo(0, 0); },

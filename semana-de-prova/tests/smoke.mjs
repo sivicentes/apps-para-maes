@@ -26,6 +26,7 @@ function makeFetch(routes) {
           return { ok: false, status: r.status, json: async () => ({ error: { message: r.error || "erro" } }) };
         }
         const payload = typeof r.reply === "function" ? r.reply(u, opts) : r.reply;
+        if (r.raw) return { ok: true, status: 200, json: async () => payload };
         const isGroq = u.includes("api.groq.com");
         const body = u.endsWith("/models") || u.includes("models?pageSize")
           ? payload
@@ -341,7 +342,7 @@ console.log("\n9. diário técnico e telas novas");
   ok(html.includes("Material lido"), "auditoria mostra o material lido");
   t.ui.screen = "pages"; t.ui.files = []; w.render();
   const html2 = w.document.getElementById("app").innerHTML;
-  ok(html2.includes("Tirar foto da página"), "tela de fila de fotos renderiza");
+  ok(html2.includes("Abrir a câmera"), "tela de fila de fotos renderiza");
   ok(w.document.getElementById("cam") !== null, "existe input com câmera");
   eq(w.document.getElementById("cam").getAttribute("capture"), "environment", "input abre a câmera traseira");
 
@@ -933,6 +934,211 @@ console.log("\n21. provas repetidas (o caso do Espanhol)");
   // sem repetidas, nenhum aviso
   t.ui.screen = "pprovas"; w.render();
   ok(!w.document.getElementById("app").innerHTML.includes("Prova repetida"), "o aviso some quando não há repetição");
+}
+
+/* ================= 22. câmera em lote ================= */
+console.log("\n22. câmera em lote (várias páginas de uma vez)");
+{
+  /* jsdom não tem câmera, canvas nem createObjectURL: monta um aparelho de mentira */
+  function aparelhoComCamera(w, { falha } = {}) {
+    const paradas = [];
+    const track = { stop() { paradas.push(1); } };
+    const stream = { getTracks: () => [track] };
+    let pedido = null;
+    w.navigator.mediaDevices = {
+      getUserMedia: async c => { pedido = c; if (falha) throw new Error("NotAllowedError"); return stream; },
+    };
+    w.HTMLMediaElement.prototype.play = async function () {};
+    w.HTMLMediaElement.prototype.pause = function () {};
+    Object.defineProperty(w.HTMLVideoElement.prototype, "videoWidth", { configurable: true, get: () => 1920 });
+    Object.defineProperty(w.HTMLVideoElement.prototype, "videoHeight", { configurable: true, get: () => 1440 });
+    w.HTMLCanvasElement.prototype.getContext = () => ({ drawImage() {} });
+    w.HTMLCanvasElement.prototype.toBlob = function (cb) { cb(new w.Blob(["foto"], { type: "image/jpeg" })); };
+    w.URL.createObjectURL = () => "blob:mentira";
+    w.URL.revokeObjectURL = () => {};
+    return { paradas, get pedido() { return pedido; } };
+  }
+  const clica = (w, id) => w.document.getElementById(id).click();
+  const esperaFoto = (w, n) => wait(w, () => w.document.getElementById("camtiras").querySelectorAll("figure").length === n);
+
+  // --- tirar três fotos sem sair da câmera ---
+  {
+    const { w, t } = await boot([]);
+    const ap = aparelhoComCamera(w);
+    t.ui.form = { name: "Benja", grade: "4º ano" }; t.A.savekid();
+
+    const p = w.abrirCamera(24);
+    await wait(w, () => !w.document.getElementById("camera").hidden);
+    ok(true, "a câmera abre dentro do app");
+    eq(ap.pedido.video.facingMode.ideal, "environment", "pede a câmera de trás");
+    eq(w.document.getElementById("camqtd").textContent, "0 fotos", "começa zerada");
+
+    clica(w, "camtira"); await esperaFoto(w, 1);
+    eq(w.document.getElementById("camqtd").textContent, "1 foto", "depois da primeira foto, conta 1");
+    clica(w, "camtira"); await esperaFoto(w, 2);
+    clica(w, "camtira"); await esperaFoto(w, 3);
+    eq(w.document.getElementById("camqtd").textContent, "3 fotos", "e vai somando sem fechar");
+    eq(w.document.getElementById("camtiras").querySelectorAll("figure").length, 3, "com uma miniatura por página");
+    ok(!w.document.getElementById("camera").hidden, "a câmera continuou aberta o tempo todo");
+
+    clica(w, "camok");
+    const fotos = await p;
+    eq(fotos.length, 3, "Pronto devolve as três de uma vez");
+    eq(fotos[0].name, "pagina-01.jpg", "a primeira vem numerada");
+    eq(fotos[2].name, "pagina-03.jpg", "e a última também");
+    eq(fotos[0].type, "image/jpeg", "são JPG");
+    ok(w.document.getElementById("camera").hidden, "a câmera fechou");
+    eq(ap.paradas.length, 1, "e desligou a câmera do aparelho");
+  }
+
+  // --- cancelar não traz nada ---
+  {
+    const { w, t } = await boot([]);
+    const ap = aparelhoComCamera(w);
+    t.ui.form = { name: "Benja", grade: "4º ano" }; t.A.savekid();
+    const p = w.abrirCamera(24);
+    await wait(w, () => !w.document.getElementById("camera").hidden);
+    clica(w, "camtira"); await esperaFoto(w, 1);
+    clica(w, "camsai");
+    eq((await p).length, 0, "Cancelar descarta as fotos tiradas");
+    ok(w.document.getElementById("camera").hidden, "e fecha a câmera");
+    eq(ap.paradas.length, 1, "desligando a câmera do aparelho também");
+  }
+
+  // --- apagar uma miniatura antes de concluir ---
+  {
+    const { w, t } = await boot([]);
+    aparelhoComCamera(w);
+    t.ui.form = { name: "Benja", grade: "4º ano" }; t.A.savekid();
+    const p = w.abrirCamera(24);
+    await wait(w, () => !w.document.getElementById("camera").hidden);
+    clica(w, "camtira"); await esperaFoto(w, 1);
+    clica(w, "camtira"); await esperaFoto(w, 2);
+    w.document.querySelector("#camtiras figure button").click();
+    await wait(w, () => w.document.getElementById("camtiras").querySelectorAll("figure").length === 1);
+    eq(w.document.getElementById("camqtd").textContent, "1 foto", "dá para apagar uma foto ruim ali mesmo");
+    clica(w, "camok");
+    eq((await p).length, 1, "e só a que sobrou vai para a fila");
+  }
+
+  // --- a fila tem limite, e a numeração continua de onde parou ---
+  {
+    const { w, t } = await boot([]);
+    aparelhoComCamera(w);
+    t.ui.form = { name: "Benja", grade: "4º ano" }; t.A.savekid();
+    t.ui.files = [{ name: "ja-estava.jpg", type: "image/jpeg" }];
+    const p = w.abrirCamera(3);
+    await wait(w, () => !w.document.getElementById("camera").hidden);
+    clica(w, "camtira"); await esperaFoto(w, 1);
+    clica(w, "camtira"); await esperaFoto(w, 2);
+    ok(w.document.getElementById("camtira").disabled, "o disparador trava quando a fila enche");
+    eq(w.document.getElementById("camdica").textContent, "fila cheia (3)", "e explica por quê");
+    clica(w, "camtira");
+    eq(w.document.getElementById("camtiras").querySelectorAll("figure").length, 2, "tocar de novo não passa do limite");
+    clica(w, "camok");
+    const fotos = await p;
+    eq(fotos[0].name, "pagina-02.jpg", "a numeração continua de onde a fila parou");
+  }
+
+  // --- o botão da tela de páginas usa a câmera em lote ---
+  {
+    const { w, t } = await boot([]);
+    aparelhoComCamera(w);
+    t.ui.form = { name: "Benja", grade: "4º ano" }; t.A.savekid();
+    const k = t.S.kids[0];
+    k.exams.push({ id: "e1", subject: "Ciências", date: "2099-12-10", topics: "", pages: "40-52", links: [], content: "", blocks: [], material: null, nPages: 0, misses: [], asked: [] });
+    t.ui.arg = "e1"; t.ui.screen = "pages"; t.ui.files = [];
+    const p = t.A.pagecam();
+    await wait(w, () => !w.document.getElementById("camera").hidden);
+    clica(w, "camtira"); await esperaFoto(w, 1);
+    clica(w, "camtira"); await esperaFoto(w, 2);
+    clica(w, "camok");
+    await p;
+    eq(t.ui.files.length, 2, "as fotos entram na fila da prova");
+    ok(w.document.getElementById("app").innerHTML.includes("2 página(s) na fila"), "e a tela mostra a fila");
+  }
+
+  // --- sem permissão, cai na câmera do sistema, como antes ---
+  {
+    const { w, t } = await boot([]);
+    aparelhoComCamera(w, { falha: true });
+    t.ui.form = { name: "Benja", grade: "4º ano" }; t.A.savekid();
+    let usouSistema = 0;
+    w.pickFiles = async cam => { usouSistema++; eq(cam, true, "pedindo a câmera do sistema"); return [{ name: "uma-so.jpg", type: "image/jpeg" }]; };
+    const fotos = await w.abrirCamera(24);
+    eq(usouSistema, 1, "câmera negada: usa a do aparelho");
+    eq(fotos.length, 1, "e ainda assim traz a foto");
+    ok(w.document.getElementById("camera").hidden, "sem deixar a tela preta aberta");
+  }
+
+  // --- navegador antigo, sem mediaDevices ---
+  {
+    const { w, t } = await boot([]);
+    t.ui.form = { name: "Benja", grade: "4º ano" }; t.A.savekid();
+    try { delete w.navigator.mediaDevices; } catch (e) { w.navigator.mediaDevices = undefined; }
+    let usouSistema = 0;
+    w.pickFiles = async () => { usouSistema++; return []; };
+    await w.abrirCamera(24);
+    eq(usouSistema, 1, "navegador sem câmera no app também cai na do aparelho");
+  }
+}
+
+/* ================= 23. o servidor com as duas IAs ================= */
+console.log("\n23. o servidor diz qual IA atendeu");
+{
+  const ligaServidor = w => w.eval('SRV = { url: "https://porteiro.exemplo/", codigo: "TURMA4A", id: "ap1" };');
+  const ultimoLog = w => JSON.parse(w.eval("JSON.stringify(LOG[0] || null)"));
+  const PERG = "Explique para uma criança de 9 anos o que é cadeia alimentar.";
+
+  // --- o pedido de texto volta pela IA rápida, e o diário registra ---
+  {
+    const { w, calls } = await boot([
+      { match: u => u.includes("porteiro.exemplo"), raw: true, reply: { texto: "É quem come quem.", ia: "groq", modelo: "llama-3.3-70b-versatile", usado: 7, teto: 120 } },
+    ]);
+    ligaServidor(w);
+    eq(await w.askText(PERG), "É quem come quem.", "a resposta do servidor chega ao app");
+    const env = calls.find(c => c.url.includes("porteiro.exemplo"));
+    eq(env.body.codigo, "TURMA4A", "o app manda o código de acesso");
+    ok(!!env.body.aparelho, "e um id de aparelho, para o teto diário");
+    ok(!JSON.stringify(env.body).includes("Bearer"), "sem chave nenhuma no pedido");
+    const l = ultimoLog(w);
+    eq(l.ia, "Servidor", "o diário registra que foi pelo servidor");
+    ok(l.modelo.includes("Groq"), "dizendo que quem atendeu foi a IA rápida");
+    ok(l.modelo.includes("llama-3.3-70b-versatile"), "com o modelo que ela usou");
+    eq(l.ok, true, "e que deu certo");
+  }
+
+  // --- quando é o Gemini, o diário diz Gemini ---
+  {
+    const { w } = await boot([
+      { match: u => u.includes("porteiro.exemplo"), raw: true, reply: { texto: "li a foto", ia: "gemini", modelo: "gemini-3.8-flash" } },
+    ]);
+    ligaServidor(w);
+    await w.askText(PERG);
+    const l = ultimoLog(w);
+    ok(l.modelo.includes("Gemini"), "o diário separa o que veio do Gemini");
+    ok(l.modelo.includes("gemini-3.8-flash"), "com o modelo dele");
+  }
+
+  // --- servidor antigo, que ainda não manda "ia": não quebra nada ---
+  {
+    const { w } = await boot([
+      { match: u => u.includes("porteiro.exemplo"), raw: true, reply: { texto: "resposta simples" } },
+    ]);
+    ligaServidor(w);
+    eq(await w.askText(PERG), "resposta simples", "servidor antigo continua funcionando");
+    ok(!!ultimoLog(w).modelo, "e o diário não fica em branco");
+  }
+
+  // --- a tela dos pais explica que o servidor faz as duas coisas ---
+  {
+    const { w, t } = await boot([]);
+    t.ui.form = { name: "Benja", grade: "4º ano" }; t.A.savekid();
+    t.ui.tab = "pais"; t.ui.unlocked = true; t.ui.screen = "pia"; w.render();
+    const html = w.document.getElementById("app").innerHTML;
+    ok(html.includes("as chaves ficam guardadas lá"), "a tela fala no plural: são duas chaves");
+    ok(html.includes("as duas IAs"), "e explica que o servidor usa as duas");
+  }
 }
 
 console.log(`\n${passed} passaram, ${failed} falharam`);
