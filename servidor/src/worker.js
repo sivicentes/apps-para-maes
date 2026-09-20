@@ -88,6 +88,36 @@ function configModelo(g, modelo) {
   return c;
 }
 
+/* Quem abre este endereco no navegador faz um GET, e o Worker so conversa
+   por POST. Em vez de devolver {"erro":"metodo"}, que parece defeito,
+   devolve uma pagina dizendo que esta no ar e mandando para o aplicativo. */
+function paginaDeStatus(env) {
+  const app = String(env.APP || lista(env.ORIGENS)[0] || "").trim();
+  const html = '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '<meta name="robots" content="noindex">' +
+    "<title>Semana de Prova &middot; servidor</title><style>" +
+    ":root{--paper:#EEF3FA;--card:#fff;--ink:#1B2A4E;--ink2:#56637F;--line:#D3DDEC;--mark:#FFDF5E;--blue:#2B59E0}" +
+    "@media(prefers-color-scheme:dark){:root{--paper:#141A28;--card:#1D2637;--ink:#EEF3FA;--ink2:#A9B6CE;--line:#2C3850}}" +
+    "*{box-sizing:border-box}body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;" +
+    "background:var(--paper);color:var(--ink);font:16px/1.6 'Nunito','Segoe UI',system-ui,sans-serif}" +
+    ".c{background:var(--card);border:2px solid var(--line);border-radius:20px;padding:26px;max-width:460px;width:100%}" +
+    "h1{font-size:1.35rem;margin:0 0 4px;line-height:1.25}" +
+    ".mk{background:linear-gradient(transparent 58%,var(--mark) 58%);padding:0 3px}" +
+    "p{margin:12px 0;color:var(--ink2)}.s{font-size:.88rem}" +
+    "a.btn{display:block;text-align:center;margin-top:18px;background:var(--blue);color:#fff;text-decoration:none;" +
+    "font-weight:700;border-radius:14px;padding:14px;min-height:52px}" +
+    "</style></head><body><div class=c>" +
+    "<h1>O servidor do <span class=mk>Semana de Prova</span> est&aacute; no ar ✅</h1>" +
+    "<p>Esta p&aacute;gina n&atilde;o &eacute; o aplicativo. Este endere&ccedil;o &eacute; s&oacute; o porteiro: " +
+    "ele guarda as chaves da intelig&ecirc;ncia artificial e responde ao aplicativo, nos bastidores.</p>" +
+    "<p class=s>Se voc&ecirc; chegou aqui clicando num link, n&atilde;o tem nada para fazer nesta p&aacute;gina. " +
+    "O endere&ccedil;o do servidor s&oacute; serve para ser colado dentro do aplicativo, em <b>Pais &rsaquo; Intelig&ecirc;ncia artificial &rsaquo; Servidor</b>.</p>" +
+    (app ? '<a class=btn href="' + app.replace(/"/g, "") + '">Abrir o aplicativo</a>' : "") +
+    "</div></body></html>";
+  return html;
+}
+
 /* Tenta a IA rapida. So entra quando o pedido e texto puro: o Groq nao
    enxerga foto nem video. Qualquer tropeco devolve null sem barulho, e o
    pedido segue para o Gemini como sempre — o app nem fica sabendo. */
@@ -129,6 +159,12 @@ export default {
   async fetch(req, env) {
     const origem = req.headers.get("Origin") || "";
     if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cabecalhos(origem, env) });
+    if (req.method === "GET" || req.method === "HEAD") {
+      return new Response(req.method === "HEAD" ? null : paginaDeStatus(env), {
+        status: 200,
+        headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Robots-Tag": "noindex" },
+      });
+    }
     if (req.method !== "POST") return resp({ erro: "metodo" }, 405, origem, env);
     if (!origemOk(origem, env)) return resp({ erro: "origem", mensagem: "Este endereco nao esta liberado." }, 403, origem, env);
 

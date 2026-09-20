@@ -7,6 +7,8 @@ compatibility_date = "2026-09-20"
 [vars]
 ORIGENS = "https://sivicentes.github.io"
 TETO_DIA = "120"
+# Para onde mandar quem abrir o endereço do servidor no navegador.
+APP = "https://sivicentes.github.io/apps-para-maes/semana-de-prova/"
 
 # Contador do teto diário, criado com `npm run servidor:kv`.
 # Este id não é segredo: ele só funciona para quem está logado na conta.

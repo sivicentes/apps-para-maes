@@ -66,8 +66,8 @@ console.log("\n3. barra quem não deve passar");
   eq(r.status, 403, "origem não liberada é recusada");
   eq(chamadas.length, 0, "também sem gastar chamada");
 
-  r = await worker.fetch(pedido(CORPO, ORIGEM, "GET"), ENV());
-  eq(r.status, 405, "GET é recusado");
+  r = await worker.fetch(pedido(CORPO, ORIGEM, "PUT"), ENV());
+  eq(r.status, 405, "método esquisito é recusado");
 
   r = await worker.fetch(pedido({ ...CORPO, prompt: "" }), ENV());
   eq(r.status, 400, "pedido sem texto é recusado");
@@ -255,6 +255,43 @@ console.log("\n8. a IA rapida (Groq) no servidor");
   for (let i = 1; i <= 3; i++) eq((await worker.fetch(pedido(CORPO), envT)).status, 200, "pedido rapido " + i + " de 3 passa");
   eq((await worker.fetch(pedido(CORPO), envT)).status, 429, "o quarto e barrado pelo teto, mesmo sendo rapido");
   eq(soGroq().length, 3, "e a IA rapida so foi chamada 3 vezes");
+}
+
+console.log("\n9. quem abre o endereco no navegador");
+{
+  const APP = "https://sivicentes.github.io/apps-para-maes/semana-de-prova/";
+  geminiFalso(RESP("nao era para vir daqui"));
+  const r = await worker.fetch(pedido(null, ORIGEM, "GET"), ENV({ APP, GROQ_KEY: "CHAVE-RAPIDA" }));
+  const html = await r.text();
+  eq(r.status, 200, "GET no navegador responde 200, nao parece defeito");
+  ok(String(r.headers.get("Content-Type")).includes("text/html"), "e devolve pagina, nao JSON");
+  ok(!html.includes('"erro"'), 'sem a palavra "erro" na tela');
+  ok(html.includes("est") && html.includes("no ar"), "dizendo que o servidor esta no ar");
+  ok(html.includes("n&atilde;o &eacute; o aplicativo"), "e avisando que ali nao e o aplicativo");
+  ok(html.includes('href="' + APP + '"'), "com o caminho para o aplicativo de verdade");
+  eq(chamadas.length, 0, "sem gastar chamada de IA nenhuma");
+
+  // a pagina nao conta nada de dentro
+  ok(!html.includes("CHAVE-SECRETA") && !html.includes("CHAVE-RAPIDA"), "nenhuma chave na pagina");
+  ok(!html.includes("TURMA4A") && !html.includes("CODIGOS"), "nenhum codigo de acesso na pagina");
+  ok(!html.includes("GEMINI_KEY") && !html.includes("GROQ_KEY"), "nem o nome dos segredos");
+  ok(html.includes("noindex"), "e pede para os buscadores nao indexarem");
+
+  // HEAD nao devolve corpo
+  const h = await worker.fetch(pedido(null, ORIGEM, "HEAD"), ENV({ APP }));
+  eq(h.status, 200, "HEAD tambem responde 200");
+  eq(await h.text(), "", "sem corpo");
+
+  // sem APP configurado, a pagina ainda funciona
+  const s = await worker.fetch(pedido(null, ORIGEM, "GET"), ENV());
+  const semApp = await s.text();
+  eq(s.status, 200, "sem APP configurado continua respondendo");
+  ok(semApp.includes(ORIGEM), "caindo na origem liberada como destino");
+
+  // origem desconhecida nao impede de ver que esta no ar
+  const x = await worker.fetch(pedido(null, "https://site-qualquer.com", "GET"), ENV({ APP }));
+  eq(x.status, 200, "quem abre de qualquer lugar ve a pagina");
+  eq(chamadas.length, 0, "e nada disso chega perto da IA");
 }
 
 globalThis.fetch = real;

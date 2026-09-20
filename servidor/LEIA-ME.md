@@ -130,6 +130,14 @@ npm run servidor:publicar
 No fim ele imprime o endereço, algo como
 `https://semana-de-prova.SEU-NOME.workers.dev`
 
+**Abrir esse endereço no navegador não mostra o aplicativo.** Ele não é um site:
+é o porteiro, e só conversa com o app. Quem abrir vê uma página dizendo que o
+servidor está no ar, com um botão para o aplicativo de verdade. Para onde esse
+botão leva é o `APP` do `wrangler.toml`.
+
+Se aparecer `{"erro":"metodo"}` em vez da página, o servidor está funcionando
+mas numa versão antiga: rode `npm run servidor:publicar` de novo.
+
 ## Ligar no aplicativo
 
 No app: **Pais → Inteligência artificial → Servidor**.
@@ -155,6 +163,8 @@ No `wrangler.toml`:
 
 - `ORIGENS` — endereços que podem chamar o Worker. Acrescente o domínio próprio
   quando comprar. Vazio libera qualquer origem.
+- `APP` — para onde vai o botão de quem abrir o endereço do servidor no
+  navegador. Troque junto com o domínio próprio.
 - `TETO_DIA` — pedidos por aparelho por dia (padrão 120). Depois de mudar,
   rode `npm run servidor:publicar` de novo.
 
@@ -163,7 +173,7 @@ No `wrangler.toml`:
 ```bash
 npm test
 ```
-73 verificações com as duas IAs simuladas: nenhuma chamada real, nenhuma chave.
+90 verificações com as duas IAs simuladas: nenhuma chamada real, nenhuma chave.
 
 Para ver o que está acontecendo no servidor de verdade:
 
