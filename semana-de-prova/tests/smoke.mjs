@@ -541,5 +541,85 @@ console.log("\n13. apagar avisa o que se perde");
   eq(t.S.kids.length, 0, "escolhendo remover, remove");
 }
 
+/* ================= 14. levar para outro aparelho ================= */
+console.log("\n14. levar para outro aparelho");
+{
+  const { w, t } = await boot([]);
+  const copiado = [];
+  w.navigator.clipboard = { writeText: async v => { copiado.push(v); } };
+  t.ui.form = { name: "Lulu", grade: "5º ano" }; t.A.savekid();
+  const k = t.S.kids[0];
+  k.exams.push({ id: "e1", subject: "Ciências", date: "2099-12-10", topics: "sistema solar", pages: "120 a 123", links: [], content: "texto longo do material lido ".repeat(50), blocks: [{ materia: "Ciências", assunto: "sol", pagina: "120", conceitos: [], texto: "x".repeat(900), hash: "h1" }], material: { sistema: "Objetivo", volume: "Apostila 2", edicao: "2026", serie: "5º ano" }, nPages: 3, misses: [], asked: [] });
+  t.S.kids[0] = k;
+
+  // copiar o codigo inteiro
+  t.A.iocopy();
+  await new Promise(r => setTimeout(r, 10));
+  ok(copiado.length === 1, "botão copia o código com um toque");
+  const vindo = JSON.parse(copiado[0]);
+  eq(vindo.kids[0].exams[0].subject, "Ciências", "o código leva as provas");
+  ok(vindo.kids[0].exams[0].content.length > 100, "o código leva o material lido");
+  ok(!copiado[0].includes("AIza") && !copiado[0].includes("gsk_"), "o código não leva chave nenhuma");
+
+  // copia leve, sem o material
+  t.A.iolite();
+  await new Promise(r => setTimeout(r, 10));
+  const leve = JSON.parse(copiado[1]);
+  eq(leve.kids[0].exams[0].subject, "Ciências", "a cópia leve mantém as provas");
+  eq(leve.kids[0].exams[0].content, "", "a cópia leve tira o material lido");
+  eq(leve.kids[0].exams[0].blocks.length, 0, "a cópia leve tira os blocos");
+  eq(leve.kids[0].exams[0].pages, "120 a 123", "mas mantém as páginas indicadas pela professora");
+  ok(copiado[1].length < copiado[0].length, "a cópia leve é menor que a completa");
+
+  // a chave pode ser mostrada e copiada, para levar ao outro aparelho
+  w.eval('G = { key: "AIzaCHAVE-DE-TESTE-1234567890", models: ["gemini-3.8-flash"], model: null }; sample = makeSample();');
+  t.ui.tab = "pais"; t.ui.unlocked = true; t.ui.screen = "pia"; w.render();
+  let html = w.document.getElementById("app").innerHTML;
+  ok(html.includes("Mostrar a chave"), "oferece mostrar a chave");
+  ok(!html.includes("AIzaCHAVE"), "a chave fica escondida até pedir");
+  t.A.gshow(); w.render();
+  ok(w.document.getElementById("app").innerHTML.includes("AIzaCHAVE"), "mostrando, a chave aparece para copiar");
+  t.A.gcopy();
+  await new Promise(r => setTimeout(r, 10));
+  eq(copiado[copiado.length - 1], "AIzaCHAVE-DE-TESTE-1234567890", "copia a chave inteira");
+}
+
+/* ================= 15. de quem é o aparelho ================= */
+console.log("\n15. de quem é o aparelho");
+{
+  const { w, t } = await boot([]);
+  t.ui.form = { name: "Lulu", grade: "5º ano" }; t.A.savekid();
+  t.ui.form = { name: "Téo", grade: "4º ano" }; t.A.savekid();
+  const [lulu, teo] = t.S.kids;
+
+  // por padrao e o aparelho da mae: da para trocar de filho
+  t.ui.tab = "hoje"; w.render();
+  let html = w.document.getElementById("app").innerHTML;
+  ok(html.includes('data-a="kid"'), "no aparelho da mãe dá para trocar de filho");
+  ok(html.includes('data-a="newkid"'), "e dá para adicionar criança");
+  ok(w.eval("devLabel()").includes("mãe"), "o app se reconhece como aparelho da mãe");
+
+  // marcar como aparelho de um filho
+  w.eval('DEV = { modo: "crianca", kid: ' + JSON.stringify(lulu.id) + ' }; saveDev();');
+  t.S.active = teo.id;
+  w.render();
+  html = w.document.getElementById("app").innerHTML;
+  eq(t.S.active, lulu.id, "o aparelho volta sozinho para o perfil dono dele");
+  ok(!html.includes('data-a="kid"'), "some o botão que troca de filho");
+  ok(!html.includes('data-a="newkid"'), "some o botão de adicionar criança");
+  ok(html.includes("Lulu"), "o nome do dono continua visível");
+  ok(!/>Téo</.test(html), "o outro filho não aparece");
+  ok(w.eval("devLabel()").includes("Lulu"), "o app sabe de quem é o aparelho");
+
+  // o ajuste fica fora da copia de seguranca: e por aparelho
+  ok(!JSON.stringify(t.S).includes("aparelho"), "o papel do aparelho não entra na cópia de segurança");
+  ok(w.eval("!!localStorage.getItem('semana-de-prova:aparelho')"), "fica guardado só neste aparelho");
+
+  // voltar para modo mae
+  w.eval('DEV = { modo: "mae" }; saveDev();');
+  w.render();
+  ok(w.document.getElementById("app").innerHTML.includes('data-a="kid"'), "voltando ao modo mãe, a troca de filho volta");
+}
+
 console.log(`\n${passed} passaram, ${failed} falharam`);
 process.exit(failed ? 1 : 0);

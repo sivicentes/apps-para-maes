@@ -791,6 +791,47 @@ function finishQuiz() {
 }
 
 /* ============ telas ============ */
+/* ============ papel do aparelho e transferencia entre aparelhos ============ */
+/* Fica fora da copia de seguranca: cada aparelho tem o seu. */
+const DKEY = "semana-de-prova:aparelho";
+let DEV = (() => { try { return JSON.parse(localStorage.getItem(DKEY)) || {}; } catch (e) { return {}; } })();
+const saveDev = () => { try { localStorage.setItem(DKEY, JSON.stringify(DEV)); } catch (e) {} };
+/* modo crianca: o aparelho fica preso a um filho so, sem troca de perfil */
+const soCrianca = () => DEV.modo === "crianca" && S.kids.some(k => k.id === DEV.kid);
+function aplicaModo() { if (soCrianca() && S.active !== DEV.kid) { S.active = DEV.kid; save(); } }
+function devLabel() {
+  if (!soCrianca()) return "Aparelho da mãe · acesso completo";
+  const k = S.kids.find(x => x.id === DEV.kid);
+  return "Aparelho de " + ((k && k.name) || "?") + " · só o estudo dele(a)";
+}
+async function copiar(txt, okMsg) {
+  try { await navigator.clipboard.writeText(txt); return toast(okMsg || "Copiado!"); }
+  catch (e) {
+    const el = $("#io") || $("#gshow");
+    if (el) { el.focus(); el.select(); try { document.execCommand("copy"); return toast(okMsg || "Copiado!"); } catch (e2) {} }
+    toast("Seu navegador não deixou copiar. Selecione o texto e copie na mão.");
+  }
+}
+function podeCompartilhar() { return typeof navigator !== "undefined" && !!navigator.share; }
+async function compartilhar(txt, titulo) {
+  try { await navigator.share({ title: titulo, text: txt }); }
+  catch (e) { if (e && e.name !== "AbortError") toast("Não consegui abrir o compartilhamento."); }
+}
+const kb = t => Math.round(String(t).length / 1024) + " KB";
+/* copia enxuta: sem o material lido, para caber em mensagem */
+function estadoLeve() {
+  const c = JSON.parse(JSON.stringify(S));
+  c.kids.forEach(k => k.exams.forEach(e => { e.content = ""; e.blocks = []; e.nPages = 0; }));
+  c.leve = 1; return JSON.stringify(c);
+}
+function vDevCard() {
+  let h = '<div class="card"><h2>Este aparelho</h2><p class="small"><span class="tag' + (soCrianca() ? "" : " ok") + '">' + esc(devLabel()) + "</span></p>";
+  h += '<p class="small muted">No aparelho da criança, o app abre direto no perfil dela, sem o botão que troca de filho. A área dos pais continua atrás da senha.</p>';
+  h += '<label for="dmodo">Para quem é este aparelho</label><select id="dmodo" data-c="modo"><option value="mae"' + (soCrianca() ? "" : " selected") + '>Meu (acesso completo)</option>' +
+    S.kids.map(x => '<option value="k:' + x.id + '"' + (soCrianca() && DEV.kid === x.id ? " selected" : "") + ">De " + esc(x.name) + "</option>").join("") + "</select>";
+  if (!PINV) h += '<p class="small" style="color:var(--bad);margin-top:8px">⚠️ Sem senha dos pais, a criança ainda entra aqui. Defina uma abaixo.</p>';
+  return h + "</div>";
+}
 /* ============ trava da area dos pais ============ */
 /* Nao e seguranca: e um obstaculo para a crian\u00e7a nao apagar sem querer.
    Fica fora da copia de seguranca, como as chaves. */
@@ -821,8 +862,9 @@ function pinCard() {
 function header(title) {
   const k = kid();
   return '<div class="top"><h1><span class="mk">' + esc(title) + '</span></h1><div class="kids">' +
-    S.kids.map(x => '<button class="chip" data-a="kid" data-id="' + x.id + '" aria-pressed="' + (x.id === S.active) + '">' + esc(x.name) + "</button>").join("") +
-    (k ? '<button class="chip" data-a="newkid" aria-label="Adicionar criança">＋</button>' : "") + "</div></div>";
+    (soCrianca() ? (k ? '<span class="chip" aria-pressed="true">' + esc(k.name) + "</span>" : "")
+      : S.kids.map(x => '<button class="chip" data-a="kid" data-id="' + x.id + '" aria-pressed="' + (x.id === S.active) + '">' + esc(x.name) + "</button>").join("") +
+        (k ? '<button class="chip" data-a="newkid" aria-label="Adicionar criança">＋</button>' : "")) + "</div></div>";
 }
 function aiBanner() {
   if (sample) return "";
@@ -1017,16 +1059,35 @@ function vPAjustes() {
 function vPIA() {
   let h = subHead("Inteligência artificial");
   h += '<div class="card"><h2>Gemini</h2><p class="small muted">Lê as fotos, o PDF, o Word e o vídeo do YouTube. É o único gratuito que faz isso, então sem ele o app não lê material.</p>' +
-    (sample ? '<p class="small"><span class="tag ok">ligada</span> ' + esc(G.model || (G.models || [])[0] || "Gemini") + '</p><p class="small muted">A chave fica só neste aparelho e não entra na cópia de segurança.</p><div class="acts"><button class="btn ghost danger" data-a="goff">Desligar e apagar a chave</button></div>' : '<label for="gkey">Chave do Gemini</label><input id="gkey" type="password" autocomplete="off" placeholder="Cole a chave (começa com AQ. ou AIza)"><div class="acts"><button class="btn pri" data-a="gsave">Salvar e testar</button></div>') + "</div>";
+    (sample
+      ? '<p class="small"><span class="tag ok">ligada</span> ' + esc(G.model || (G.models || [])[0] || "Gemini") + '</p><p class="small muted">A chave fica só neste aparelho e não entra na cópia de segurança. Para usá-la no celular ou no tablet, mostre e copie aqui.</p>' +
+        '<div class="acts two"><button class="btn" data-a="gshow">' + (ui.showKey === "g" ? "Esconder a chave" : "👁️ Mostrar a chave") + '</button><button class="btn" data-a="gcopy">📋 Copiar a chave</button></div>' +
+        (ui.showKey === "g" ? '<textarea id="gshow" readonly style="margin-top:10px;font-size:.8rem;min-height:60px">' + esc(G.key || "") + "</textarea>" : "") +
+        '<div class="acts"><button class="btn ghost danger" data-a="goff">Desligar e apagar a chave</button></div>'
+      : '<label for="gkey">Chave do Gemini</label><input id="gkey" type="password" autocomplete="off" placeholder="Cole a chave (começa com AQ. ou AIza)"><div class="acts"><button class="btn pri" data-a="gsave">Salvar e testar</button></div><p class="small muted">Pegue em aistudio.google.com. Se você já configurou em outro aparelho, lá em Pais tem "mostrar a chave" para copiar.</p>') + "</div>";
   h += '<div class="card"><h2>Groq <span class="small muted" style="font-weight:600">opcional</span></h2><p class="small muted">Cuida do roteiro, da explicação e do quiz, que ficam bem mais rápidos nele. Não enxerga foto nem vídeo.</p>' +
-    (R.key ? '<p class="small"><span class="tag ok">ligada</span> ' + esc(R.model || (R.models || [])[0] || "Groq") + '</p><div class="acts"><button class="btn ghost danger" data-a="roff">Desligar e apagar a chave</button></div>' : '<label for="rkey">Chave do Groq</label><input id="rkey" type="password" autocomplete="off" placeholder="Cole a chave (começa com gsk_)"><div class="acts"><button class="btn pri" data-a="rsave">Salvar e testar</button></div>') + "</div>";
+    (R.key
+      ? '<p class="small"><span class="tag ok">ligada</span> ' + esc(R.model || (R.models || [])[0] || "Groq") + '</p>' +
+        '<div class="acts two"><button class="btn" data-a="rshow">' + (ui.showKey === "r" ? "Esconder a chave" : "👁️ Mostrar a chave") + '</button><button class="btn" data-a="rcopy">📋 Copiar a chave</button></div>' +
+        (ui.showKey === "r" ? '<textarea id="gshow" readonly style="margin-top:10px;font-size:.8rem;min-height:60px">' + esc(R.key || "") + "</textarea>" : "") +
+        '<div class="acts"><button class="btn ghost danger" data-a="roff">Desligar e apagar a chave</button></div>'
+      : '<label for="rkey">Chave do Groq</label><input id="rkey" type="password" autocomplete="off" placeholder="Cole a chave (começa com gsk_)"><div class="acts"><button class="btn pri" data-a="rsave">Salvar e testar</button></div>') + "</div>";
+  h += '<p class="small muted">Trate a chave como senha: ela é sua e está ligada à sua conta na Google. Não publique nem mande para quem não for de casa.</p>';
   return h;
 }
 function vPAvancado() {
   let h = subHead("Senha, cópia e diagnóstico");
+  h += vDevCard();
   h += pinCard();
-  h += '<div class="card"><h2>Cópia de segurança</h2><p class="small muted">' + (storageOk ? "Os dados ficam só neste aparelho e neste navegador." : "<b>Atenção:</b> este navegador não está deixando salvar; ao fechar, os dados se perdem.") + ' Para levar a outro aparelho, copie o código e cole lá. A chave da IA não vai junto.</p><div class="acts two"><button class="btn ghost" data-a="export">Mostrar código</button><button class="btn ghost" data-a="import">Colar código</button></div>' +
-    (ui.form.io ? '<textarea id="io" style="margin-top:10px;font-size:.78rem" ' + (ui.form.io === "export" ? "readonly>" + esc(JSON.stringify(S)) : 'placeholder="Cole o código aqui">') + "</textarea>" + (ui.form.io === "import" ? '<div class="acts"><button class="btn pri" data-a="doimport">Restaurar</button></div>' : "") : "") + "</div>";
+  const full = JSON.stringify(S), leve = estadoLeve();
+  h += '<div class="card"><h2>Levar para outro aparelho</h2><p class="small muted">' + (storageOk ? "Os dados ficam só neste aparelho e neste navegador." : "<b>Atenção:</b> este navegador não está deixando salvar; ao fechar, os dados se perdem.") + ' Para levar ao celular ou ao tablet: copie o código aqui, mande para você mesma por WhatsApp ou e-mail, abra o app lá e cole.</p>' +
+    '<div class="acts two"><button class="btn pri" data-a="iocopy">📋 Copiar o código (' + kb(full) + ')</button>' +
+    (podeCompartilhar() ? '<button class="btn" data-a="ioshare">📤 Enviar</button>' : '<button class="btn" data-a="export">Ver o código</button>') + "</div>" +
+    (full.length > 60000 ? '<p class="small" style="color:var(--bad);margin-top:8px">⚠️ Esse código é grande e pode não caber numa mensagem. Use a cópia leve abaixo e depois reenvie as fotos das páginas no outro aparelho.</p>' : "") +
+    '<div class="acts"><button class="btn ghost" data-a="iolite">🪶 Copiar cópia leve, sem o material lido (' + kb(leve) + ')</button><button class="btn ghost" data-a="import">Colar um código aqui</button></div>' +
+    (ui.form.io ? '<textarea id="io" style="margin-top:10px;font-size:.78rem" ' + (ui.form.io === "export" ? "readonly>" + esc(full) : 'placeholder="Cole o código que você copiou do outro aparelho">') + "</textarea>" + (ui.form.io === "import" ? '<div class="acts"><button class="btn pri" data-a="doimport">Restaurar</button></div>' : "") : "") +
+    '<p class="small muted" style="margin-top:8px">A chave da IA não vai no código. Para levá-la, use "mostrar a chave" em Inteligência artificial.</p></div>';
+
   h += '<div class="card"><h2>Diário técnico</h2><p class="small muted">As últimas coisas que a IA fez neste aparelho. Serve para entender por que algo demorou ou falhou.</p>' + (LOG.length ? '<div style="max-height:300px;overflow:auto;margin-top:8px">' + LOG.map(l => '<div class="row between" style="padding:6px 0;border-bottom:1.5px dashed var(--line);gap:8px"><span class="grow small"><b>' + esc(l.tarefa) + '</b> <span class="muted">' + esc(l.ia) + " · " + esc(String(l.modelo || "")) + '</span><br><span class="muted" style="font-size:.8rem">' + esc(l.hora) + " · " + esc(String(l.seg)) + "s · entrada " + esc(String(l.entrada)) + " car." + (l.fotos ? " · " + esc(String(l.fotos)) + " foto(s)" : "") + (l.ok ? " · saída " + esc(String(l.saida)) + " car." : "") + '</span></span><span class="tag ' + (l.ok ? "ok" : "bad") + '">' + (l.ok ? "ok" : esc(String(l.erro))) + "</span></div>").join("") + "</div>" + '<div class="acts"><button class="btn ghost" data-a="clearlog">Limpar diário</button></div>' : '<p class="small muted">Nada registrado ainda.</p>') + "</div>";
   return h;
 }
@@ -1053,6 +1114,7 @@ function vPages() {
     '<p class="small muted">As fotos s\u00e3o lidas pelo Gemini e n\u00e3o ficam guardadas: o app salva s\u00f3 o texto, neste aparelho. Se puder, corte da foto o nome completo da crian\u00e7a.</p>';
 }
 function render() {
+  aplicaModo();
   const k = kid(); let h;
   if (ui.screen && /^(pprovas|pprog|pajustes|pia|pavancado|examdet)$/.test(ui.screen) && (ui.tab !== "pais" || locked())) ui.screen = null;
   if (!k || ui.screen === "welcome") h = vWelcome();
@@ -1145,6 +1207,13 @@ const A = {
   pavancado() { ui.screen = "pavancado"; ui.form = {}; window.scrollTo(0, 0); },
   ppais() { ui.screen = null; ui.form = {}; window.scrollTo(0, 0); },
   examdet(d) { ui.arg = d.id; ui.screen = "examdet"; window.scrollTo(0, 0); },
+  iocopy() { copiar(JSON.stringify(S), "Código copiado! Mande para você mesma e cole no outro aparelho."); },
+  iolite() { copiar(estadoLeve(), "Cópia leve copiada! No outro aparelho, reenvie as fotos das páginas."); },
+  ioshare() { compartilhar(JSON.stringify(S), "Semana de Prova — cópia de segurança"); },
+  gshow() { ui.showKey = ui.showKey === "g" ? null : "g"; },
+  rshow() { ui.showKey = ui.showKey === "r" ? null : "r"; },
+  gcopy() { copiar(G.key || "", "Chave do Gemini copiada. Cole no outro aparelho, em Pais."); },
+  rcopy() { copiar(R.key || "", "Chave do Groq copiada."); },
   clearlog() { LOG = []; saveLog(); },
   export() { ui.form.io = ui.form.io === "export" ? null : "export"; },
   import() { ui.form.io = ui.form.io === "import" ? null : "import"; },
@@ -1168,7 +1237,8 @@ document.addEventListener("change", ev => {
   if (c === "minutes") S.settings.minutes = +ev.target.value;
   if (c === "weekends") S.settings.weekends = ev.target.checked;
   if (c === "pace") { const kk = S.kids.find(x => x.id === ev.target.dataset.id); if (kk) kk.pace = PACE[ev.target.value] ? ev.target.value : "normal"; }
-  save(); if (c === "pace") render();
+  if (c === "modo") { const v = String(ev.target.value); DEV = v.slice(0, 2) === "k:" ? { modo: "crianca", kid: v.slice(2) } : { modo: "mae" }; saveDev(); }
+  save(); if (c === "pace" || c === "modo") render();
 });
 document.addEventListener("focusin", ev => { if (ev.target.id === "io" && ev.target.readOnly) ev.target.select(); });
 render();

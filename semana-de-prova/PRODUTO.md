@@ -84,9 +84,13 @@ Antes de qualquer ação que apague de verdade — nova semana, remover criança
 
 Cada aparelho é uma ilha: o que a criança faz no tablet dela não aparece no celular da mãe. Não há sincronização até o servidor da Fase 2. **[hoje]**
 
-O caminho hoje é a mãe montar tudo num aparelho, exportar o código de cópia de segurança e colar nos tablets dos filhos. A chave da IA não vai no código de propósito, então é colada de novo em cada aparelho onde a criança for usar explicação e quiz. Todos os aparelhos gastam da mesma cota gratuita, porque a cota é do projeto na Google, não do aparelho. **[hoje]**
+Cada aparelho diz para quem ele é, em Pais: **meu** (acesso completo, dá para trocar de filho e cadastrar outros) ou **de um filho específico** (abre direto no perfil dele, sem o botão que troca de perfil, e o outro filho nem aparece). Esse ajuste fica só no aparelho, fora da cópia de segurança. **[hoje]**
 
-Os dados ficam presos ao endereço do site. Se o app mudar de endereço (domínio próprio, por exemplo), é preciso exportar a cópia antes e restaurar no endereço novo. **[hoje]**
+Para levar os dados de um aparelho a outro, Pais traz um botão que copia o código com um toque, para mandar por mensagem para si mesma e colar no outro aparelho. Quando o material lido deixa o código grande demais para uma mensagem, há uma **cópia leve** que mantém provas, datas, páginas e roteiro e descarta só o material lido, que pode ser reenviado depois. **[hoje]**
+
+A chave da IA nunca vai na cópia de segurança. Para usá-la em outro aparelho, Pais permite **mostrar e copiar a chave** — atrás da senha dos pais. **[hoje]**
+
+Todos os aparelhos gastam da mesma cota gratuita, porque a cota é do projeto na Google, não do aparelho. Os dados ficam presos ao endereço do site: se o app mudar de endereço, é preciso exportar a cópia antes e restaurar no endereço novo. **[hoje]**
 
 ## 5. Jornada da criança
 
