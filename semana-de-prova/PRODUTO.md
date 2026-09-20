@@ -75,6 +75,15 @@ Em Pais, "Compartilhar com a turma" copia um código com o que é da turma: prov
 
 Essa é a versão de hoje do compartilhamento: resolve a turma agora, sem servidor, com o mesmo formato de dados que a Fase 2 vai usar.
 
+### O servidor (porteiro da IA) **[hoje, a ligar]**
+
+O Worker na Cloudflare guarda a chave do Gemini como secret. O app manda o pedido para ele, que acrescenta a chave e chama o Gemini. **Nenhum aparelho precisa de chave** — nem o da mãe que montou, nem o das outras.
+
+- Ligado em Pais → Inteligência artificial → Servidor: endereço e código de acesso, uma vez por aparelho.
+- O app funciona nos dois modos. Se o servidor cair por motivo técnico, ele usa a chave própria como reserva, quando houver uma. Erro que é decisão do servidor (código inválido, cota do dia) não tenta de novo pela chave.
+- Protege com teto diário por aparelho, limite de tamanho do pedido, código de acesso e checagem de origem. O código é obstáculo, não segurança: quem abre o app consegue lê-lo. O que segura de verdade é o teto diário, e o código serve para revogar.
+- Antes de abrir para outras famílias: nível pago do Gemini, aviso de privacidade e termos.
+
 ### Depois: turma no servidor [planejado]
 
 - A primeira mãe cria a turma (escola, ano e sala) e recebe um código para mandar no grupo da sala.

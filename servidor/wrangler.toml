@@ -1,0 +1,20 @@
+name = "semana-de-prova"
+main = "src/worker.js"
+compatibility_date = "2026-09-20"
+
+# Endereços que podem chamar este Worker. Vazio = não barra ninguém.
+# Acrescente o domínio próprio aqui quando comprar.
+[vars]
+ORIGENS = "https://sivicentes.github.io"
+TETO_DIA = "120"
+
+# Contador do teto diário. Descomente depois de criar o namespace com:
+#   npx wrangler kv namespace create USO
+# O comando devolve um id; cole abaixo.
+# [[kv_namespaces]]
+# binding = "KV"
+# id = "cole-o-id-aqui"
+
+# Segredos NÃO ficam aqui. São enviados pela linha de comando:
+#   npx wrangler secret put GEMINI_KEY
+#   npx wrangler secret put CODIGOS

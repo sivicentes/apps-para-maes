@@ -24,3 +24,8 @@ desktop.ini
 
 # material de origem da passagem de projeto (zips e extracoes)
 rotina-de-estudos/
+
+# Cloudflare
+servidor/node_modules/
+servidor/.wrangler/
+.dev.vars

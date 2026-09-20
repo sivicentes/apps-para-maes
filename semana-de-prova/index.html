@@ -366,10 +366,63 @@ async function groqRaw(prompt, o, wantJson) {
   }
   throw last;
 }
+/* ============ modo servidor: IA sem chave no aparelho ============ */
+/* O Worker guarda a chave. O app manda o pedido e recebe o texto de volta.
+   Fica fora da copia de seguranca, como as chaves: e por aparelho.
+   Se o servidor falhar por motivo tecnico, o app cai na chave propria,
+   quando houver uma. */
+const SKEY = "semana-de-prova:servidor";
+let SRV = (() => { try { return JSON.parse(localStorage.getItem(SKEY)) || {}; } catch (e) { return {}; } })();
+const saveSrv = () => { try { localStorage.setItem(SKEY, JSON.stringify(SRV)); } catch (e) {} };
+const temServidor = () => !!(SRV.url && SRV.codigo);
+/* identidade do aparelho, so para o servidor contar o teto diario */
+function idAparelho() {
+  if (!SRV.id) { SRV.id = uid() + uid(); saveSrv(); }
+  return SRV.id;
+}
+const SRVERR = {
+  origem: "Este endereço não está liberado no servidor.",
+  codigo: "O código de acesso não foi aceito. Confira em Pais.",
+  cota: "O limite de uso de hoje acabou neste aparelho. Amanhã volta.",
+  chave_servidor: "O servidor está com problema na chave. Avise quem cuida do app.",
+  sem_chave: "O servidor ainda não tem chave configurada.",
+  limite_google: "O limite gratuito por minuto foi atingido. Espere um minutinho.",
+  cortado: "A resposta veio pela metade: o material é grande demais para uma vez só.",
+  recusado: "A IA não pôde responder a esse material.",
+  vazio_ia: "A IA respondeu em branco. Tente de novo em alguns segundos.",
+  video: "Não consegui assistir a esse vídeo. Ele precisa ser público no YouTube.",
+};
+/* erros que NAO adianta repetir na chave propria: sao decisao do servidor */
+const SRVFINAL = ["codigo", "cota", "origem", "cortado", "recusado", "vazio_ia", "video", "limite_google"];
+
+let servidor = async function (prompt, o, wantJson) {
+  const fotos = [];
+  const imgs = o.images ? (Array.isArray(o.images) ? o.images : [o.images]) : [];
+  for (const im of imgs) fotos.push({ tipo: im.type || "image/jpeg", dados: await b64(im) });
+  let r;
+  try {
+    r = await fetch(SRV.url, {
+      method: "POST", headers: { "Content-Type": "application/json" }, signal: o.signal,
+      body: JSON.stringify({ codigo: SRV.codigo, aparelho: idAparelho(), prompt, fotos, video: o.video || "", json: !!wantJson }),
+    });
+  } catch (e) { throw { code: e && e.name === "AbortError" ? "cancelled" : "servidor_fora" }; }
+  let d; try { d = await r.json(); } catch (e) { throw { code: "servidor_fora" }; }
+  if (d && d.texto) { SRV.usado = d.usado; SRV.teto = d.teto; SRV.semContagem = d.semContagem; saveSrv(); return d.texto; }
+  const e = String((d && d.erro) || "servidor_fora");
+  throw { code: "srv_" + e, message: (d && d.mensagem) || "", final: SRVFINAL.includes(e) };
+}
+const errServidor = e => {
+  const k = String((e && e.code) || "").replace(/^srv_/, "");
+  return SRVERR[k] || (e && e.message) || "O servidor não respondeu. Tente de novo.";
+};
+/* o diario tecnico registra tambem os pedidos que vao pelo servidor */
+const servidorRaw = servidor;
+servidor = (prompt, o, wantJson) => logged("Servidor", () => "gemini pelo Worker", prompt, o, () => servidorRaw(prompt, o, wantJson));
 /* Groq nao enxerga: foto, PDF e video continuam sempre no Gemini. */
 const useFast = o => !!R.key && !o.images && !o.video;
 
-const canImages = () => !!sample;
+const temIA = () => !!sample || temServidor();
+const canImages = () => !!sample || temServidor();
 const imgMax = () => (limits && limits.images && limits.images.maxCount) || 3;
 const ERR = {
   bad_key: "A chave do Gemini não foi aceita. Confira em Pais se ela foi colada inteira.",
@@ -386,20 +439,29 @@ const ERR = {
   invalid_json: "A IA respondeu fora do formato esperado. Tente de novo.",
   bad_key2: "A chave do Groq nao foi aceita. Confira em Pais se ela foi colada inteira.",
 };
-const errMsg = e => ((e && ERR[e.code]) || "Não deu certo desta vez. Tente de novo.") + (e && e.code === "bad_key" && e.message ? " (" + e.message + ")" : "");
+const errMsg = e => (String((e && e.code) || "").slice(0, 4) === "srv_" ? errServidor(e) : (e && e.code) === "sem_ia" ? "Ligue a inteligência artificial ou o servidor, na aba Pais." : (e && e.code) === "servidor_fora" ? "O servidor não respondeu. Confira o endereço em Pais." : (e && ERR[e.code]) || "Não deu certo desta vez. Tente de novo.") + (e && e.code === "bad_key" && e.message ? " (" + e.message + ")" : "");
 function confirmBox(msg, yes, label) { ui.confirm = { msg, yes, label }; }
 function busy(msg, sub) { ui.busy = { msg, sub: sub || "" }; render(); }
 function idle() { ui.busy = null; ctl = null; render(); }
 function toast(t) { const el = $("#toast"); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { el.hidden = true; }, Math.max(4200, String(t).length * 70)); }
+/* ordem: Groq para texto puro (rapido), servidor quando configurado,
+   chave propria como ultimo recurso. Erro que e decisao do servidor
+   (codigo invalido, cota) nao tenta de novo na chave. */
+async function pedir(prompt, o, wantJson) {
+  if (useFast(o)) { try { return await groq(prompt, o, wantJson); } catch (e) { if (e.code === "cancelled") throw e; } }
+  if (temServidor()) {
+    try { return await servidor(prompt, o, wantJson); }
+    catch (e) { if (e.code === "cancelled" || e.final || !sample) throw e; }
+  }
+  if (!sample) throw { code: "sem_ia" };
+  return wantJson ? JSON.stringify(await sample.json(prompt, o)) : (await sample(prompt, o)).text;
+}
 async function askText(prompt, opts = {}) {
-  ctl = new AbortController(); const o = { signal: ctl.signal, ...opts };
-  if (useFast(o)) { try { return await groq(prompt, o, false); } catch (e) { if (e.code === "cancelled") throw e; } }
-  const r = await sample(prompt, o); return r.text;
+  ctl = new AbortController(); return await pedir(prompt, { signal: ctl.signal, ...opts }, false);
 }
 async function askJSON(prompt, opts = {}) {
-  ctl = new AbortController(); const o = { signal: ctl.signal, ...opts };
-  if (useFast(o)) { try { return parseLoose(await groq(prompt, o, true)); } catch (e) { if (e.code === "cancelled") throw e; } }
-  return await sample.json(prompt, o);
+  ctl = new AbortController(); const t = await pedir(prompt, { signal: ctl.signal, ...opts }, true);
+  return typeof t === "string" ? parseLoose(t) : t;
 }
 
 /* ============ arquivos: fotos e PDF ============ */
@@ -476,7 +538,7 @@ function noticePrompt(extra) {
     (extra ? "\n\nTEXTO DOS COMUNICADOS (pode haver mais de um arquivo, de professoras diferentes; junte tudo):\n" + extra.slice(0, 30000) : "");
 }
 async function readNotice(files, pasted) {
-  if (!sample) return toast("A leitura automática precisa da IA ligada (aba Pais). Por enquanto, adicione as provas na mão.");
+  if (!temIA()) return toast("A leitura automática precisa da IA ligada (aba Pais). Por enquanto, adicione as provas na mão.");
   busy("Abrindo o comunicado…");
   try {
     const g = files.length ? await gather(files) : { text: "", images: [], failed: [] };
@@ -570,7 +632,7 @@ async function readChunk(ex, extraText, images) {
 }
 async function readPages(examId, files) {
   const ex = examOf(examId); if (!ex) return;
-  if (!sample) return toast("Para ler as páginas, ligue a IA na aba Pais.");
+  if (!temIA()) return toast("Para ler as páginas, ligue a IA na aba Pais.");
   if (!files || !files.length) return toast("Nenhuma página para ler.");
   busy("Preparando as páginas…");
   try {
@@ -594,7 +656,7 @@ async function readPages(examId, files) {
 /* ============ 2b. vídeo do YouTube ============ */
 async function readVideo(examId, url) {
   const ex = examOf(examId), id = ytId(url); if (!ex || !id) return;
-  if (!sample) return toast("Para ler o vídeo, ligue a IA na aba Pais.");
+  if (!temIA()) return toast("Para ler o vídeo, ligue a IA na aba Pais.");
   busy("Assistindo ao vídeo de " + ex.subject + "…", "Vídeos longos podem levar alguns minutos.");
   try {
     const t = await askText("Este é um vídeo que a professora de " + ex.subject + " indicou para um aluno do " + kid().grade + " (Brasil) estudar para uma prova sobre: " + (ex.topics || "(assunto não informado)") + ".\n" +
@@ -684,7 +746,7 @@ function startPlan(onlyId) {
     ]);
   }
   const faltando = exams.filter(e => !e.nPages).length;
-  if (faltando && sample) return confirmBox(faltando + " prova(s) ainda sem p\u00e1ginas enviadas. Montar o roteiro mesmo assim?", () => makePlan(onlyId), "Montar");
+  if (faltando && temIA()) return confirmBox(faltando + " prova(s) ainda sem p\u00e1ginas enviadas. Montar o roteiro mesmo assim?", () => makePlan(onlyId), "Montar");
   return makePlan(onlyId);
 }
 function studyDays(fromS, toS) { const out = []; for (let d = fromS; d <= toS; d = addDays(d, 1)) { const w = parseD(d).getDay(); if (S.settings.weekends || (w !== 0 && w !== 6)) out.push(d); } return out; }
@@ -725,7 +787,7 @@ async function makePlan(onlyId, opts) {
   const kept = k.sessions.filter(s => s.done || (onlyId && s.examId !== onlyId));
   const pace = PACE[opts.pace] ? opts.pace : paceOf();
   let sessions = [], usedAI = false;
-  if (sample) {
+  if (temIA()) {
     busy(onlyId ? "Montando o roteiro de " + exams[0].subject + "\u2026" : "Montando o roteiro\u2026", "Isso leva at\u00e9 um minuto.");
     try {
       const r = await askJSON(planPrompt(exams, t, pace, opts), { cache: false });
@@ -749,7 +811,7 @@ async function makePlan(onlyId, opts) {
     return da.localeCompare(db) || (a.ord || 0) - (b.ord || 0);
   });
   k.planAt = t; save(); ui.tab = "hoje"; ui.screen = null; idle();
-  if (usedAI || !sample) toast(onlyId ? "Roteiro de " + exams[0].subject + " pronto!" : "Roteiro pronto!");
+  if (usedAI || !temIA()) toast(onlyId ? "Roteiro de " + exams[0].subject + " pronto!" : "Roteiro pronto!");
 }
 
 /* ============ 4. explicação e quiz ============ */
@@ -759,7 +821,7 @@ function sessionContext(s, ex) {
 }
 async function explain(sid) {
   const s = sessOf(sid), ex = s && examOf(s.examId); if (!s || !ex) return;
-  if (!sample) return toast("Para explicar, ligue a IA na aba Pais.");
+  if (!temIA()) return toast("Para explicar, ligue a IA na aba Pais.");
   ui.explainLive = "Pensando…"; render(); ctl = new AbortController();
   try {
     const r = await sample("Explique para uma criança o conteúdo desta sessão de estudo, como uma professora paciente e animada.\n" + sessionContext(s, ex) +
@@ -797,7 +859,7 @@ function fetchQuiz(sid, fresh) {
   quizJobs[sid] = job; return job;
 }
 async function startQuiz(sid) {
-  if (!sample) return toast("Para o quiz, ligue a IA na aba Pais.");
+  if (!temIA()) return toast("Para o quiz, ligue a IA na aba Pais.");
   busy("Preparando suas perguntas…", "Só um pouquinho!");
   try { const qs = await fetchQuiz(sid); delete quizJobs[sid]; ui.quiz = { sid, qs, i: 0, picked: null, right: 0, wrong: [] }; ui.screen = "quiz"; idle(); }
   catch (e) { delete quizJobs[sid]; idle(); toast(errMsg(e)); }
@@ -921,7 +983,7 @@ function header(title) {
         (k ? '<button class="chip" data-a="newkid" aria-label="Adicionar criança">＋</button>' : "")) + "</div></div>";
 }
 function aiBanner() {
-  if (sample) return "";
+  if (temIA()) return "";
   return '<div class="note small"><b>Falta ligar a inteligência artificial.</b> Sem ela dá para cadastrar provas e usar um roteiro simples. Para ler fotos e vídeos, explicar e fazer quiz, cole a chave do Gemini. <button class="link" data-a="tab" data-t="pais">Ligar agora</button></div>';
 }
 function vWelcome() {
@@ -1106,7 +1168,7 @@ function vPais() {
   h += hubRow("pcompartilhar", "📤", "Compartilhar", "para outro aparelho seu, ou para as mães da turma");
   h += '<div class="sec">O aplicativo</div>';
   h += hubRow("pia", "🤖", "Inteligência artificial",
-    sample ? (R.key ? "Gemini e Groq ligados" : "Gemini ligado · sem a segunda IA") : "falta ligar — sem ela não há quiz", !sample);
+    temServidor() ? "pelo servidor, sem chave neste aparelho" + (R.key ? " · Groq ligado" : "") : sample ? (R.key ? "Gemini e Groq ligados" : "Gemini ligado · sem a segunda IA") : "falta ligar — sem ela não há quiz", !temIA());
   h += hubRow("pavancado", "🔐", "Senha e diagnóstico",
     (PINV ? "senha ligada" : "sem senha") + " · diário técnico");
   h += '<p class="small muted" style="margin-top:18px">As explicações e perguntas são feitas por IA a partir do material enviado e podem conter erros. Na dúvida, vale o que está no livro e o que a professora ensinou.</p>';
@@ -1211,6 +1273,15 @@ function vPAjustes() {
 }
 function vPIA() {
   let h = subHead("Inteligência artificial");
+  h += '<div class="card"><h2>Servidor <span class="small muted" style="font-weight:600">sem chave no aparelho</span></h2><p class="small muted">Com o servidor ligado, a chave fica guardada lá e este aparelho nunca precisa dela. É assim que as outras mães vão usar.</p>' +
+    (temServidor()
+      ? '<p class="small"><span class="tag ok">ligado</span> ' + esc(String(SRV.url).replace(/^https?:\/\//, "").slice(0, 40)) + '</p>' +
+        (SRV.semContagem ? '<p class="small muted">Sem contagem de uso: o servidor está sem o teto diário ligado.</p>'
+          : SRV.teto ? '<p class="small muted">Uso de hoje neste aparelho: <b>' + esc(String(SRV.usado || 0)) + " de " + esc(String(SRV.teto)) + "</b>.</p>" : "") +
+        '<div class="acts"><button class="btn ghost danger" data-a="srvoff">Desligar o servidor</button></div>'
+      : '<label for="surl">Endereço do servidor</label><input id="surl" type="text" autocomplete="off" placeholder="https://semana-de-prova.xxx.workers.dev" value="' + esc(ui.form.surl || "") + '">' +
+        '<label for="scod">Código de acesso</label><input id="scod" type="text" autocomplete="off" placeholder="o código que veio junto" value="' + esc(ui.form.scod || "") + '">' +
+        '<div class="acts"><button class="btn pri" data-a="srvsave">Ligar e testar</button></div>') + "</div>";
   h += '<div class="card"><h2>Gemini</h2><p class="small muted">Lê as fotos, o PDF, o Word e o vídeo do YouTube. É o único gratuito que faz isso, então sem ele o app não lê material.</p>' +
     (sample
       ? '<p class="small"><span class="tag ok">ligada</span> ' + esc(G.model || (G.models || [])[0] || "Gemini") + '</p><p class="small muted">A chave fica só neste aparelho e não entra na cópia de segurança. Para usá-la no celular ou no tablet, mostre e copie aqui.</p>' +
@@ -1303,7 +1374,7 @@ function vDiag() {
   if (ui.confirm) h += '<div class="veil" role="alertdialog" aria-label="Confirmar"><div class="card"><h2>' + esc(ui.confirm.msg) + '</h2>' + (ui.confirm.sub ? '<p class="small" style="text-align:left">' + esc(ui.confirm.sub) + "</p>" : "") + '<div class="btns" style="justify-content:center;flex-direction:column">' + (ui.confirm.opts ? ui.confirm.opts.map((o, i) => '<button class="btn ' + (o.pri ? "pri" : "") + ' block" data-a="copt" data-i="' + i + '">' + esc(o.label) + "</button>").join("") + '<button class="btn ghost block" data-a="cno">Cancelar</button>' : '<button class="btn ghost" data-a="cno">Cancelar</button><button class="btn pri" data-a="cyes">' + esc(ui.confirm.label || "Sim") + "</button>") + "</div></div></div>";
   $("#app").innerHTML = h;
 }
-function keepForm() { document.querySelectorAll("#app input[id],#app textarea[id],#app select[id]").forEach(el => { const m = { kname: "name", kgrade: "grade", kpace: "pace", wio: "wio", ntext: "ntext", esub: "subject", edate: "date", etop: "topics", epag: "pages", elinks: "links", ptext: "ptext", msis: "msis", mvol: "mvol", medi: "medi" }[el.id]; if (m) ui.form[m] = el.value; }); }
+function keepForm() { document.querySelectorAll("#app input[id],#app textarea[id],#app select[id]").forEach(el => { const m = { kname: "name", kgrade: "grade", kpace: "pace", wio: "wio", ntext: "ntext", esub: "subject", edate: "date", etop: "topics", epag: "pages", elinks: "links", ptext: "ptext", msis: "msis", mvol: "mvol", medi: "medi", surl: "surl", scod: "scod" }[el.id]; if (m) ui.form[m] = el.value; }); }
 /* ============ ações ============ */
 const A = {
   tab(d) { ui.tab = d.t; ui.screen = null; ui.form = {}; if (d.t !== "pais") ui.riddle = null; },
@@ -1344,7 +1415,7 @@ const A = {
   savepaste() { const e = examOf(ui.arg), t = (ui.form.ptext || "").trim(); if (!e) return; if (t.length < 20) return toast("Cole o texto do material primeiro."); const a = addText(e, "Material colado", t); e.nPages = (e.nPages || 0) + 1; save(); ui.screen = null; ui.form = {}; toast(a.added ? "Material guardado! J\u00e1 vale para as explica\u00e7\u00f5es e os quizzes." : "Esse texto j\u00e1 estava guardado."); },
   plan() { return startPlan(null); },
   open(d) { ui.screen = "session"; ui.arg = d.id; ui.explainLive = ""; window.scrollTo(0, 0); },
-  step(d) { const s = sessOf(ui.arg); if (!s) return; const x = s.steps[+d.i]; x.done = !x.done; save(); if (sample && s.steps.every(y => y.done) && !s.score) fetchQuiz(s.id).catch(() => {}); },
+  step(d) { const s = sessOf(ui.arg); if (!s) return; const x = s.steps[+d.i]; x.done = !x.done; save(); if (temIA() && s.steps.every(y => y.done) && !s.score) fetchQuiz(s.id).catch(() => {}); },
   toggledone() { const s = sessOf(ui.arg); s.done = !s.done; save(); if (s.done) { ui.screen = null; } },
   explain() { explain(ui.arg); },
   quiz() { startQuiz(ui.arg); },
@@ -1404,6 +1475,17 @@ const A = {
     const res = importarTurma(r.dados); ui.screen = null; ui.form = {}; ui.tab = "hoje"; render();
     toast(res.novas + " prova(s) chegaram" + (res.comRot ? " com o roteiro pronto" : "") + ". Bons estudos!");
   },
+  async srvsave() {
+    const url = ($("#surl") ? $("#surl").value : "").trim().replace(/\/+$/, "");
+    const cod = ($("#scod") ? $("#scod").value : "").trim();
+    if (!/^https:\/\/[^\s]+\./.test(url)) return toast("Cole o endereço inteiro do servidor, começando com https://");
+    if (!cod) return toast("Falta o código de acesso.");
+    const antes = SRV; SRV = { url, codigo: cod, id: (antes && antes.id) || uid() + uid() }; saveSrv();
+    busy("Testando o servidor…");
+    try { await servidor("Responda apenas: ok", {}, false); idle(); toast("Servidor ligado! Este aparelho não precisa mais de chave."); }
+    catch (e) { SRV = antes || {}; saveSrv(); idle(); toast(errMsg(e)); }
+  },
+  srvoff() { confirmBox("Desligar o servidor neste aparelho?", () => { SRV = { id: SRV.id }; saveSrv(); }, "Desligar"); },
   clearlog() { LOG = []; saveLog(); },
   export() { ui.form.io = ui.form.io === "export" ? null : "export"; },
   import() { ui.form.io = ui.form.io === "import" ? null : "import"; },

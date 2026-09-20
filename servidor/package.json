@@ -1,0 +1,10 @@
+{
+  "name": "semana-de-prova-servidor",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node testes/worker.mjs",
+    "deploy": "wrangler deploy",
+    "log": "wrangler tail"
+  }
+}
