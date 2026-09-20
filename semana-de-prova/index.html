@@ -570,7 +570,7 @@ async function readVideo(examId, url) {
 }
 
 /* ============ 3. roteiro ============ */
-function chooseBox(msg, opts) { ui.confirm = { msg, opts }; }
+function chooseBox(msg, opts, sub) { ui.confirm = { msg, opts, sub }; }
 /* ============ ritmo de estudo (por crianca) ============ */
 /* Teto diario = quanto tempo a crianca tem por dia, somando as materias.
    Ritmo = quanto conteudo cabe DENTRO de uma sessao. Sao coisas diferentes. */
@@ -754,6 +754,33 @@ function finishQuiz() {
 }
 
 /* ============ telas ============ */
+/* ============ trava da area dos pais ============ */
+/* Nao e seguranca: e um obstaculo para a crian\u00e7a nao apagar sem querer.
+   Fica fora da copia de seguranca, como as chaves. */
+const PKEY = "semana-de-prova:pin";
+let PINV = (() => { try { return localStorage.getItem(PKEY) || ""; } catch (e) { return ""; } })();
+const savePin = () => { try { PINV ? localStorage.setItem(PKEY, PINV) : localStorage.removeItem(PKEY); } catch (e) {} };
+const locked = () => !!PINV && !ui.unlocked;
+function newRiddle() { const a = 11 + Math.floor(Math.random() * 78), b = 12 + Math.floor(Math.random() * 76); ui.riddle = { a, b }; }
+function vLock() {
+  const r = ui.riddle;
+  let h = '<div style="max-width:360px;margin:12vh auto 0;text-align:center"><div style="font-size:3rem">\ud83d\udd12</div><h1>\u00c1rea dos pais</h1>';
+  if (r) {
+    h += '<p class="muted">Para tirar a senha, responda: <b>' + r.a + " \u00d7 " + r.b + "</b></p>" +
+      '<div class="card"><label for="rans">Resposta</label><input id="rans" type="text" inputmode="numeric" autocomplete="off">' +
+      '<div class="btns"><button class="btn pri block" data-a="rsolve">Confirmar</button><button class="btn ghost block" data-a="rcancel">Voltar</button></div></div>' +
+      '<p class="small muted">Pode usar a calculadora. Isso s\u00f3 existe para a crian\u00e7a n\u00e3o entrar sem querer.</p>';
+  } else {
+    h += '<p class="muted">Digite a senha de 4 n\u00fameros.</p><div class="card"><label for="pin">Senha</label><input id="pin" type="password" inputmode="numeric" maxlength="4" autocomplete="off" style="text-align:center;font-size:1.6rem;letter-spacing:.5em">' +
+      '<div class="btns"><button class="btn pri block" data-a="punlock">Entrar</button></div><button class="link" data-a="pforgot">Esqueci a senha</button></div>' +
+      '<div class="btns"><button class="btn ghost block" data-a="tab" data-t="hoje">\u2039 Voltar para o estudo</button></div>';
+  }
+  return h + "</div>";
+}
+function pinCard() {
+  if (PINV) return '<div class="card"><h2>Senha dos pais</h2><p class="small"><span class="tag ok">ligada</span> A crian\u00e7a n\u00e3o entra aqui sem os 4 n\u00fameros.</p><div class="btns"><button class="btn ghost" data-a="poff">Tirar a senha</button></div></div>';
+  return '<div class="card"><h2>Senha dos pais</h2><p class="small muted">Sem senha, seu filho pode entrar aqui e apagar as provas, o roteiro ou a chave da IA sem querer. Escolha 4 n\u00fameros.</p><label for="pnew">Nova senha</label><input id="pnew" type="password" inputmode="numeric" maxlength="4" autocomplete="off" style="text-align:center;font-size:1.4rem;letter-spacing:.5em"><div class="btns"><button class="btn pri block" data-a="pset">Guardar senha</button></div></div>';
+}
 function header(title) {
   const k = kid();
   return '<div class="top"><h1><span class="mk">' + esc(title) + '</span></h1><div class="kids">' +
@@ -794,10 +821,10 @@ function partRow(s, n) {
 }
 function vHoje() {
   const k = kid(), t = today(); let h = header("Estudar") + aiBanner();
-  if (!k.exams.length) return h + '<div class="card"><h2>Nenhuma prova cadastrada</h2><p class="muted">Comece enviando o comunicado da escola com as datas e os conte\u00fados.</p><div class="btns"><button class="btn pri block" data-a="tab" data-t="provas">Cadastrar as provas</button></div></div>';
+  if (!k.exams.length) return h + '<div class="card"><h2>Nenhuma prova cadastrada</h2><p class="muted">Comece enviando o comunicado da escola com as datas e os conte\u00fados.</p><div class="btns"><button class="btn pri block" data-a="tab" data-t="pais">Cadastrar as provas</button></div></div>';
   h += ruler();
   k.exams.filter(e => e.date === t).forEach(e => { h += '<div class="card alert"><h3>Hoje tem prova de ' + esc(e.subject) + '</h3><p class="small">Respira fundo, l\u00ea cada pergunta com calma. Voc\u00ea se preparou! \ud83c\udf40</p></div>'; });
-  if (!k.sessions.length) return h + '<div class="card"><h2>Falta montar o roteiro</h2><p class="muted">As provas j\u00e1 est\u00e3o cadastradas. Envie as p\u00e1ginas de estudo e monte o roteiro.</p><div class="btns"><button class="btn pri block" data-a="tab" data-t="provas">Ir para as provas</button></div></div>';
+  if (!k.sessions.length) return h + '<div class="card"><h2>Falta montar o roteiro</h2><p class="muted">As provas j\u00e1 est\u00e3o cadastradas. Envie as p\u00e1ginas de estudo e monte o roteiro.</p><div class="btns"><button class="btn pri block" data-a="tab" data-t="pais">Ir para as provas</button></div></div>';
   // revisao de vespera que cai hoje ganha destaque
   const hoje = k.sessions.filter(s => s.date === t && !s.done);
   if (hoje.length) h += '<div class="card" style="border-color:var(--ink)"><h2>\u2b50 A prova \u00e9 amanh\u00e3</h2><p class="small muted">Esta \u00e9 a revis\u00e3o de v\u00e9spera. Ela traz de volta o que voc\u00ea errou nos quizzes.</p>' + hoje.map((s, i) => partRow(s, i + 1)).join("") + "</div>";
@@ -817,8 +844,8 @@ function vHoje() {
   if (!algum) h += '<div class="card"><p class="muted">Nenhuma parte de estudo montada ainda.</p></div>';
   return h;
 }
-function vProvas() {
-  const k = kid(), t = today(); let h = header("Provas") + aiBanner();
+function provasBlock() {
+  const k = kid(), t = today(); let h = "";
   h += '<div class="btns"><button class="btn pri grow" data-a="notice">📄 Ler o comunicado</button><button class="btn" data-a="addexam">＋ Na mão</button></div>';
   if (!k.exams.length) h += '<div class="card"><p class="muted">Envie a foto, o print, o PDF ou o Word que a escola mandou com as datas e conteúdos. Você confere tudo antes de montar o roteiro.</p></div>';
   k.exams.forEach(e => {
@@ -872,7 +899,9 @@ function vResult() {
     '<div class="btns"><button class="btn pri block" data-a="endquiz">Concluir</button>' + (z.wrong.length ? '<button class="btn block" data-a="retryquiz">Treinar de novo com perguntas novas</button>' : "") + "</div></div>";
 }
 function vPais() {
-  const k = kid(), t = today(); let h = header("Pais") + '<p class="muted small">Acompanhamento de ' + esc(k.name) + " (" + esc(k.grade) + ").</p>";
+  const k = kid(), t = today(); let h = header("Pais") + aiBanner();
+  h += '<h2 style="margin-top:6px">Provas e material</h2>' + provasBlock();
+  h += '<h2 style="margin-top:22px">Como ' + esc(k.name) + ' est\u00e1 indo</h2>';
   if (!k.exams.length) h += '<div class="card"><p class="muted">Quando houver provas cadastradas, o progresso aparece aqui.</p></div>';
   k.exams.forEach(e => {
     const ss = k.sessions.filter(s => s.examId === e.id), dn = ss.filter(s => s.done).length, sc = ss.filter(s => s.score);
@@ -885,6 +914,7 @@ function vPais() {
   h += '<div class="card"><h2>Segunda IA (opcional)</h2>' + (R.key ? '<p class="small"><span class="tag ok">ligada</span> ' + esc(R.model || R.models[0] || "Groq") + '</p><p class="small muted">O Groq cuida do roteiro, da explica\u00e7\u00e3o e do quiz, que ficam bem mais r\u00e1pidos nele. Ler foto, PDF e v\u00eddeo continua sempre no Gemini.</p><div class="btns"><button class="btn ghost" data-a="roff">Desligar e apagar a chave</button></div>' : '<p class="small muted">Opcional, e deixa o roteiro, a explica\u00e7\u00e3o e o quiz bem mais r\u00e1pidos. Chave gratuita em console.groq.com. Ler foto, PDF e v\u00eddeo continua sempre no Gemini.</p><label for="rkey">Chave do Groq</label><input id="rkey" type="password" autocomplete="off" placeholder="Cole a chave (come\u00e7a com gsk_)"><div class="btns"><button class="btn pri block" data-a="rsave">Salvar e testar</button></div>') + '</div>';
   h += '<div class="card"><h2>Ajustes do roteiro</h2><label for="smin">Tempo máximo de estudo por dia</label><select id="smin" data-c="minutes">' + [30, 45, 60, 90].map(m => '<option value="' + m + '"' + (S.settings.minutes === m ? " selected" : "") + ">" + m + " minutos</option>").join("") + '</select><label class="row" style="font-weight:600;margin-top:12px"><input type="checkbox" data-c="weekends"' + (S.settings.weekends ? " checked" : "") + ' style="width:22px;height:22px"> Estudar também no fim de semana</label><p class="small muted">Vale para o próximo roteiro montado.</p></div>';
   h += '<div class="card"><h2>Crian\u00e7as</h2>' + S.kids.map(x => '<div style="padding:8px 0;border-bottom:1.5px dashed var(--line)"><div class="row between"><span><b>' + esc(x.name) + "</b> \u00b7 " + esc(x.grade) + '</span><button class="link" data-a="delkid" data-id="' + x.id + '">remover</button></div><label for="pc' + x.id + '" class="small">Ritmo de estudo</label><select id="pc' + x.id + '" data-c="pace" data-id="' + x.id + '">' + PACEK.map(pk => '<option value="' + pk + '"' + (paceOf(x) === pk ? " selected" : "") + ">" + PACE[pk].label + "</option>").join("") + '</select><p class="small muted">' + esc(PACE[paceOf(x)].dica) + "</p></div>").join("") + '<div class="btns"><button class="btn" data-a="newkid">\uff0b Adicionar crian\u00e7a</button><button class="btn ghost" data-a="newweek">Nova semana de provas</button></div></div>';
+  h += pinCard();
   h += '<div class="card"><h2>Di\u00e1rio t\u00e9cnico</h2><p class="small muted">As \u00faltimas coisas que a IA fez neste aparelho. Serve para entender por que algo demorou ou falhou.</p>' + (LOG.length ? '<div style="max-height:320px;overflow:auto;margin-top:8px">' + LOG.map(l => '<div class="row between" style="padding:6px 0;border-bottom:1.5px dashed var(--line);gap:8px"><span class="grow small"><b>' + esc(l.tarefa) + '</b> <span class="muted">' + esc(l.ia) + " \u00b7 " + esc(String(l.modelo || "")) + '</span><br><span class="muted" style="font-size:.8rem">' + esc(l.hora) + " \u00b7 " + esc(String(l.seg)) + "s \u00b7 entrada " + esc(String(l.entrada)) + " car." + (l.fotos ? " \u00b7 " + esc(String(l.fotos)) + " foto(s)" : "") + (l.ok ? " \u00b7 sa\u00edda " + esc(String(l.saida)) + " car." : "") + '</span></span><span class="tag ' + (l.ok ? "ok" : "bad") + '">' + (l.ok ? "ok" : esc(String(l.erro))) + "</span></div>").join("") + "</div>" + '<div class="btns"><button class="btn ghost" data-a="clearlog">Limpar di\u00e1rio</button></div>' : '<p class="small muted">Nada registrado ainda.</p>') + "</div>";
   h += '<div class="card"><h2>Cópia de segurança</h2><p class="small muted">' + (storageOk ? "Os dados ficam só neste aparelho e neste navegador." : "<b>Atenção:</b> este navegador não está deixando salvar; ao fechar, os dados se perdem.") + ' Para levar a outro aparelho, copie o código e cole lá.</p><div class="btns"><button class="btn ghost" data-a="export">Mostrar código</button><button class="btn ghost" data-a="import">Colar código</button></div>' +
     (ui.form.io ? '<textarea id="io" style="margin-top:10px;font-size:.78rem" ' + (ui.form.io === "export" ? "readonly>" + esc(JSON.stringify(S)) : 'placeholder="Cole o código aqui">') + "</textarea>" + (ui.form.io === "import" ? '<div class="btns"><button class="btn pri" data-a="doimport">Restaurar</button></div>' : "") : "") + "</div>";
@@ -924,24 +954,31 @@ function render() {
   else if (ui.screen === "session") h = vSession();
   else if (ui.screen === "quiz") h = vQuiz();
   else if (ui.screen === "result") h = vResult();
-  else h = ui.tab === "provas" ? vProvas() : ui.tab === "pais" ? vPais() : vHoje();
-  if (k && !ui.screen) h += '<nav class="nav" aria-label="Seções">' + [["hoje", "📅", "Hoje"], ["provas", "📝", "Provas"], ["pais", "👀", "Pais"]].map(([t, ic, l]) => '<button data-a="tab" data-t="' + t + '"' + (ui.tab === t ? ' aria-current="page"' : "") + '><span class="ic">' + ic + "</span>" + l + "</button>").join("") + "</nav>";
+  else if (ui.tab === "pais") h = locked() ? vLock() : vPais();
+  else h = vHoje();
+  if (k && !ui.screen) h += '<nav class="nav" aria-label="Seções">' + [["hoje", "📅", "Estudar"], ["pais", "🔒", "Pais"]].map(([t, ic, l]) => '<button data-a="tab" data-t="' + t + '"' + (ui.tab === t ? ' aria-current="page"' : "") + '><span class="ic">' + ic + "</span>" + l + "</button>").join("") + "</nav>";
   if (ui.busy) h += '<div class="veil" role="alertdialog" aria-label="Aguarde"><div class="card"><div class="pencil">✏️</div><h2>' + esc(ui.busy.msg) + '</h2><p class="muted small">' + esc(ui.busy.sub) + '</p><div class="btns" style="justify-content:center"><button class="btn ghost" data-a="stop">Parar</button></div></div></div>';
-  if (ui.confirm) h += '<div class="veil" role="alertdialog" aria-label="Confirmar"><div class="card"><h2>' + esc(ui.confirm.msg) + '</h2><div class="btns" style="justify-content:center;flex-direction:column">' + (ui.confirm.opts ? ui.confirm.opts.map((o, i) => '<button class="btn ' + (o.pri ? "pri" : "") + ' block" data-a="copt" data-i="' + i + '">' + esc(o.label) + "</button>").join("") + '<button class="btn ghost block" data-a="cno">Cancelar</button>' : '<button class="btn ghost" data-a="cno">Cancelar</button><button class="btn pri" data-a="cyes">' + esc(ui.confirm.label || "Sim") + "</button>") + "</div></div></div>";
+  if (ui.confirm) h += '<div class="veil" role="alertdialog" aria-label="Confirmar"><div class="card"><h2>' + esc(ui.confirm.msg) + '</h2>' + (ui.confirm.sub ? '<p class="small" style="text-align:left">' + esc(ui.confirm.sub) + "</p>" : "") + '<div class="btns" style="justify-content:center;flex-direction:column">' + (ui.confirm.opts ? ui.confirm.opts.map((o, i) => '<button class="btn ' + (o.pri ? "pri" : "") + ' block" data-a="copt" data-i="' + i + '">' + esc(o.label) + "</button>").join("") + '<button class="btn ghost block" data-a="cno">Cancelar</button>' : '<button class="btn ghost" data-a="cno">Cancelar</button><button class="btn pri" data-a="cyes">' + esc(ui.confirm.label || "Sim") + "</button>") + "</div></div></div>";
   $("#app").innerHTML = h;
 }
 function keepForm() { document.querySelectorAll("#app input[id],#app textarea[id],#app select[id]").forEach(el => { const m = { kname: "name", kgrade: "grade", kpace: "pace", ntext: "ntext", esub: "subject", edate: "date", etop: "topics", epag: "pages", elinks: "links", ptext: "ptext", msis: "msis", mvol: "mvol", medi: "medi" }[el.id]; if (m) ui.form[m] = el.value; }); }
 
 /* ============ ações ============ */
 const A = {
-  tab(d) { ui.tab = d.t; ui.screen = null; ui.form = {}; },
+  tab(d) { ui.tab = d.t; ui.screen = null; ui.form = {}; if (d.t !== "pais") ui.riddle = null; },
   kid(d) { S.active = d.id; save(); ui.screen = null; },
   newkid() { ui.form = {}; ui.screen = "welcome"; },
   back() { ui.screen = null; ui.form = {}; if (ctl) ctl.abort(); ui.explainLive = ""; },
   savekid() { const name = (ui.form.name || "").trim(); if (!name) return toast("Escreva o nome ou apelido."); const k = { id: uid(), name: name.slice(0, 20), grade: ui.form.grade || "5º ano", pace: PACE[ui.form.pace] ? ui.form.pace : "normal", exams: [], sessions: [], planAt: null }; S.kids.push(k); S.active = k.id; save(); ui.screen = null; ui.form = {}; ui.tab = "provas"; },
-  delkid(d) { const x = S.kids.find(k => k.id === d.id); if (!x) return; confirmBox("Remover " + x.name + " e tudo o que foi salvo?", () => { S.kids = S.kids.filter(k => k.id !== d.id); if (S.active === d.id) S.active = S.kids[0]?.id || null; save(); }, "Remover"); },
-  newweek() { const k = kid(); confirmBox("Apagar as provas e o roteiro de " + k.name + " para começar uma nova semana?", () => { k.exams = []; k.sessions = []; k.planAt = null; save(); ui.tab = "provas"; }, "Apagar"); },
-  notice() { ui.form = {}; ui.files = []; ui.screen = "notice"; },
+  newweek() { const k = kid(); const nq = k.sessions.filter(s => s.score).length; chooseBox("Apagar a semana de " + k.name + "?", [
+    { label: "Primeiro salvar uma c\u00f3pia", pri: true, fn: () => { ui.form.io = "export"; toast("Copie o c\u00f3digo e guarde. Depois apague com seguran\u00e7a."); } },
+    { label: "Apagar tudo mesmo assim", fn: () => { k.exams = []; k.sessions = []; k.planAt = null; save(); toast("Semana apagada."); } },
+  ], "Vai perder: " + k.exams.length + " prova(s), " + k.sessions.length + " parte(s) de estudo e " + nq + " quiz(es) j\u00e1 feito(s), com os erros que voltariam na revis\u00e3o. O material lido some junto. N\u00e3o tem como desfazer."); },
+  delkid(d) { const x = S.kids.find(k => k.id === d.id); if (!x) return; const nq = x.sessions.filter(s => s.score).length; chooseBox("Remover " + x.name + "?", [
+    { label: "Primeiro salvar uma c\u00f3pia", pri: true, fn: () => { ui.form.io = "export"; toast("Copie o c\u00f3digo e guarde. Depois remova com seguran\u00e7a."); } },
+    { label: "Remover mesmo assim", fn: () => { S.kids = S.kids.filter(k => k.id !== d.id); if (S.active === d.id) S.active = (S.kids[0] || {}).id || null; save(); toast(x.name + " removido(a)."); } },
+  ], "Vai perder tudo de " + x.name + ": " + x.exams.length + " prova(s), " + x.sessions.length + " parte(s) e " + nq + " quiz(es), com o hist\u00f3rico de acertos e erros. N\u00e3o tem como desfazer."); },
+    notice() { ui.form = {}; ui.files = []; ui.screen = "notice"; },
   async noticefile() { const files = await pickFiles(); keepForm(); for (const f of files) if (ui.files.length < 12) ui.files.push(f); render(); },
   rmfile(d) { ui.files.splice(+d.i, 1); },
   noticego() { const t = (ui.form.ntext || "").trim(); if (!ui.files.length && t.length < 10) return toast("Escolha os arquivos ou cole o texto do aviso."); readNotice(ui.files.slice(), t); },
@@ -979,10 +1016,24 @@ const A = {
   copt(d) { const o = ui.confirm && ui.confirm.opts && ui.confirm.opts[+d.i]; ui.confirm = null; if (o && o.fn) return o.fn(); },
   cno() { ui.confirm = null; },
   cyes() { const f = ui.confirm && ui.confirm.yes; ui.confirm = null; if (f) return f(); },
+  punlock() { const v = ($("#pin") ? $("#pin").value : "").trim(); if (v !== PINV) return toast("Senha errada."); ui.unlocked = true; ui.riddle = null; },
+  pforgot() { newRiddle(); },
+  rcancel() { ui.riddle = null; },
+  rsolve() { const r = ui.riddle, v = ($("#rans") ? $("#rans").value : "").replace(/\D/g, ""); if (!r) return; if (+v !== r.a * r.b) { newRiddle(); return toast("N\u00e3o \u00e9 esse. Tente a conta nova."); } PINV = ""; savePin(); ui.unlocked = true; ui.riddle = null; toast("Senha removida. Escolha uma nova em Pais."); },
+  pset() { const v = ($("#pnew") ? $("#pnew").value : "").replace(/\D/g, ""); if (v.length !== 4) return toast("A senha precisa ter 4 n\u00fameros."); PINV = v; savePin(); ui.unlocked = true; toast("Senha guardada. Anote em algum lugar seguro."); },
+  poff() { confirmBox("Tirar a senha dos pais? Seu filho vai poder entrar aqui.", () => { PINV = ""; savePin(); }, "Tirar"); },
   clearlog() { LOG = []; saveLog(); },
   export() { ui.form.io = ui.form.io === "export" ? null : "export"; },
   import() { ui.form.io = ui.form.io === "import" ? null : "import"; },
-  doimport() { try { const s = JSON.parse($("#io").value); if (!s || !Array.isArray(s.kids)) throw 0; confirmBox("Substituir os dados deste aparelho pelos do código?", () => { S = s; S.settings = S.settings || { minutes: 45, weekends: true }; save(); ui.form = {}; toast("Dados restaurados."); }, "Substituir"); } catch (e) { toast("Esse código não é válido."); } },
+  doimport() { let s2; try { s2 = JSON.parse($("#io").value); if (!s2 || !Array.isArray(s2.kids)) throw 0; } catch (e) { return toast("Esse c\u00f3digo n\u00e3o \u00e9 v\u00e1lido."); }
+    const nomes = s2.kids.map(x => x.name).join(", ") || "ningu\u00e9m";
+    const atual = S.kids.map(x => x.name).join(", ") || "ningu\u00e9m";
+    chooseBox("Restaurar a c\u00f3pia?", [
+      { label: "Primeiro salvar o que est\u00e1 aqui", pri: true, fn: () => { ui.form.io = "export"; toast("Copie este c\u00f3digo antes. Depois cole o outro e restaure."); } },
+      { label: "Substituir mesmo assim", fn: () => { S = s2; S.settings = S.settings || { minutes: 45, weekends: true }; save(); ui.form = {}; toast("Dados restaurados."); } },
+    ], "O c\u00f3digo traz: " + nomes + ". Vai substituir o que est\u00e1 neste aparelho: " + atual + ". A chave da IA n\u00e3o \u00e9 afetada. N\u00e3o tem como desfazer.");
+  },
+  
 };
 document.addEventListener("click", ev => {
   const b = ev.target.closest("[data-a]"); if (!b || b.disabled) return;
