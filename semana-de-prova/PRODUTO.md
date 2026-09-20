@@ -19,7 +19,7 @@ O Semana de Prova pega todo esse material e transforma em um plano simples: o qu
 ## 3. Princípios
 
 1. **A mãe leiga consegue usar.** Abrir o link e tirar foto. Sem conta, sem chave, sem configuração [planejado para as outras mães; hoje eu uso com chave própria].
-2. **A criança consegue usar sozinha.** Uma tela por vez, botões grandes, frases curtas, tom animado e sem bronca.
+2. **A criança consegue usar sozinha, sem poder quebrar nada.** Uma tela por vez, botões grandes, frases curtas, tom animado e sem bronca. A área dela não tem nenhum botão que apague.
 3. **O material da escola manda.** Explicações e perguntas saem do que a professora indicou, não de conhecimento geral. Na dúvida, vale o livro e a professora.
 4. **Sessões curtas.** De 15 a 30 minutos, dentro de um limite diário que a família define.
 5. **Errar faz parte.** O erro não é punido; ele vira reforço na revisão.
@@ -69,6 +69,25 @@ O compartilhamento tem duas camadas, com chaves diferentes, porque são coisas d
 - Quando alguém envia material novo, o app avisa as demais.
 - Nunca é compartilhado: nome da criança, progresso, notas e erros.
 
+## 4.5 Separação entre a criança e a mãe
+
+O app tem duas áreas, e a divisão é por quem faz o quê, não por conteúdo.
+
+- **Estudar** é da criança: as partes, os passos, a explicação e o quiz. Nunca tranca, nunca pede senha, não tem nenhum botão que apague coisa alguma. **[hoje]**
+- **Pais** é da mãe, protegida por uma senha de 4 números: cadastrar e editar provas, enviar material, montar roteiro, "O que a IA entendeu", chaves das IAs, ritmo de cada filho, cópia de segurança e diário técnico. **[hoje]**
+
+A senha não é segurança de verdade — é um obstáculo para a criança não apagar sem querer. Fica só no aparelho, fora da cópia de segurança, como as chaves. Se a mãe esquecer, "Esqueci a senha" pede uma multiplicação de dois números de dois dígitos: ela resolve na calculadora, a criança dificilmente se dá ao trabalho. Nenhum dado se perde nesse caminho. **[hoje]**
+
+Antes de qualquer ação que apague de verdade — nova semana, remover criança, restaurar cópia —, o app diz **exatamente o que será perdido** (quantas provas, quantas partes, quantos quizzes com o histórico de erros) e oferece salvar uma cópia primeiro. **[hoje]**
+
+## 4.6 Vários aparelhos
+
+Cada aparelho é uma ilha: o que a criança faz no tablet dela não aparece no celular da mãe. Não há sincronização até o servidor da Fase 2. **[hoje]**
+
+O caminho hoje é a mãe montar tudo num aparelho, exportar o código de cópia de segurança e colar nos tablets dos filhos. A chave da IA não vai no código de propósito, então é colada de novo em cada aparelho onde a criança for usar explicação e quiz. Todos os aparelhos gastam da mesma cota gratuita, porque a cota é do projeto na Google, não do aparelho. **[hoje]**
+
+Os dados ficam presos ao endereço do site. Se o app mudar de endereço (domínio próprio, por exemplo), é preciso exportar a cópia antes e restaurar no endereço novo. **[hoje]**
+
 ## 5. Jornada da criança
 
 O app **oferece**, não manda. Todo o estudo de cada prova aparece de uma vez, em partes numeradas na ordem sugerida, e a criança escolhe qual fazer agora. Não há sessão presa a um dia: se ela quiser fazer três partes num sábado e nenhuma na segunda, tudo bem. A única exceção é a revisão da véspera, que continua ligada à data da prova, porque é ela que traz de volta o que a criança errou nos quizzes. **[hoje]**
@@ -116,7 +135,7 @@ O app **oferece**, não manda. Todo o estudo de cada prova aparece de uma vez, e
 - **Comunicados**: fila de arquivos e campo para colar texto.
 - **Material da prova**: colar texto.
 - **Editar prova**: matéria, data, o que cai, páginas e links.
-- **Pais**: progresso por matéria, inteligência artificial, ajustes do roteiro, crianças, cópia de segurança, nova semana.
+- **Pais** (com senha): provas e material, progresso por matéria, as duas IAs, ajustes do roteiro, ritmo de cada filho, crianças, cópia de segurança, diário técnico e nova semana.
 
 ## 9. O que a IA faz e o que não faz
 
