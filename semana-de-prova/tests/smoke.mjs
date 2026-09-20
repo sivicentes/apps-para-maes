@@ -343,8 +343,8 @@ console.log("\n9. diário técnico e telas novas");
   eq(w.document.getElementById("cam").getAttribute("capture"), "environment", "input abre a câmera traseira");
 
   // aba Pais mostra o diario
-  t.ui.screen = null; t.ui.tab = "pais"; w.render();
-  ok(w.document.getElementById("app").innerHTML.includes("Diário técnico"), "diário aparece na aba Pais");
+  t.ui.tab = "pais"; t.ui.unlocked = true; t.ui.screen = "pavancado"; w.render();
+  ok(w.document.getElementById("app").innerHTML.includes("Diário técnico"), "diário aparece em Pais > Senha, cópia e diagnóstico");
 }
 
 /* ================= 10. roteiro como lista livre ================= */
@@ -415,8 +415,12 @@ console.log("\n10. roteiro como lista livre (sem dia fixo)");
   ok(w.document.getElementById("app").innerHTML.includes("1 de 3 partes feitas"), "progresso acompanha o que foi feito");
 
   // aviso de cobertura no cartao da prova
-  t.ui.tab = "pais"; t.ui.unlocked = true; w.render();
-  ok(w.document.getElementById("app").innerHTML.includes("só 2 entrou"), "cartão avisa que falta material (agora em Pais)");
+  t.ui.tab = "pais"; t.ui.unlocked = true; t.ui.screen = "pprovas"; w.render();
+  ok(w.document.getElementById("app").innerHTML.includes("falta página"), "a ficha da prova marca que falta material");
+  t.ui.arg = ex.id; t.ui.screen = "examdet"; w.render();
+  const det = w.document.getElementById("app").innerHTML;
+  ok(det.includes("só 2 entrou"), "a tela da prova explica o que falta");
+  ok(det.includes("Material de estudo") && det.includes("Roteiro"), "a tela da prova reúne as ações num lugar só");
 }
 
 /* ================= 11. aviso quando não cabe ================= */
@@ -452,11 +456,19 @@ console.log("\n12. área dos pais trancada");
   // sem senha, Pais abre e oferece criar uma
   t.ui.tab = "pais"; w.render();
   let html = w.document.getElementById("app").innerHTML;
+  ok(html.includes("Provas e material"), "o hub lista Provas e material");
+  ok(html.includes("Como Lulu está indo"), "o hub lista o progresso");
+  ok(html.includes("Inteligência artificial"), "o hub lista as IAs");
+  ok((html.match(/class="hub/g) || []).length === 5, "o hub tem cinco fichas, nada de rolagem infinita");
+  ok(html.includes("falta ligar"), "a ficha da IA mostra o estado sem precisar entrar");
+  t.ui.screen = "pavancado"; w.render();
+  html = w.document.getElementById("app").innerHTML;
   ok(html.includes("Senha dos pais"), "Pais oferece criar a senha");
-  ok(html.includes("Provas e material"), "Pais agora contém a gestão das provas");
+  t.ui.screen = null; w.render(); html = w.document.getElementById("app").innerHTML;
   ok(!html.includes("Área dos pais"), "sem senha não tranca");
   ok(html.includes("Estudar"), "aba Estudar existe");
   ok(!/data-a="tab" data-t="provas"><span/.test(html), "aba Provas saiu da navegação");
+  t.ui.screen = "pavancado"; w.render();
 
   // define a senha usando o campo real da tela
   setv("pnew", "1234"); t.A.pset();
@@ -465,9 +477,9 @@ console.log("\n12. área dos pais trancada");
   ok(!JSON.stringify(t.S).includes("1234"), "senha não entra no estado nem na cópia de segurança");
 
   // sair e voltar: tranca
-  t.ui.unlocked = false; t.ui.tab = "pais"; w.render();
+  t.ui.unlocked = false; t.ui.tab = "pais"; t.ui.screen = "pavancado"; w.render();
   html = w.document.getElementById("app").innerHTML;
-  ok(html.includes("Área dos pais"), "com senha, tranca");
+  ok(html.includes("Área dos pais"), "com senha, tranca mesmo vindo de uma sub-tela");
   ok(!html.includes("Provas e material"), "conteúdo dos pais fica escondido");
   ok(!html.includes("Cópia de segurança"), "cópia de segurança escondida");
   ok(!html.includes("Chave do Gemini"), "campo da chave escondido");
@@ -479,15 +491,15 @@ console.log("\n12. área dos pais trancada");
   // senha certa abre
   setv("pin", "1234"); t.A.punlock();
   ok(t.ui.unlocked, "senha certa destranca");
-  w.render();
-  ok(w.document.getElementById("app").innerHTML.includes("Provas e material"), "destrancada, mostra o conteúdo");
+  t.ui.screen = null; w.render();
+  ok(w.document.getElementById("app").innerHTML.includes("Provas e material"), "destrancada, mostra o hub");
 
   // a criança continua com o estudo livre
   t.ui.unlocked = false; t.ui.tab = "hoje"; w.render();
   ok(!w.document.getElementById("app").innerHTML.includes("Área dos pais"), "a tela de estudo nunca tranca");
 
   // saída de emergência: a conta
-  t.ui.tab = "pais"; t.A.pforgot(); w.render();
+  t.ui.tab = "pais"; t.ui.unlocked = false; t.A.pforgot(); w.render();
   const r = JSON.parse(w.eval("JSON.stringify(ui.riddle)"));
   ok(r && r.a > 10 && r.b > 10, "a conta de emergência foi gerada com dois números de dois dígitos");
   ok(r.a * r.b > 100, "a conta não é trivial para criança");

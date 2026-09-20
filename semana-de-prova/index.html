@@ -117,6 +117,43 @@ textarea{min-height:88px;resize:vertical}
 .bar i{display:block;height:100%;background:var(--blue);border-radius:99px;transition:width .3s}
 .score{font-family:var(--display);font-size:3.2rem;font-weight:800;line-height:1}
 
+/* navegacao em fichas: uma linha por assunto, com o estado ja visivel */
+.hub{display:flex;align-items:center;gap:13px;width:100%;text-align:left;background:var(--card);border:2px solid var(--line);border-radius:16px;padding:13px 14px;margin:9px 0;box-shadow:var(--shadow);transition:transform .12s ease,border-color .12s ease}
+.hub:hover{border-color:var(--ink)}
+.hub:active{transform:translateY(1px);box-shadow:none}
+.hub .ico{flex:0 0 44px;height:44px;border-radius:13px;background:var(--blue-soft);display:grid;place-items:center;font-size:1.3rem}
+.hub .tt{font-family:var(--display);font-weight:700;font-size:1.06rem;display:block;line-height:1.2}
+.hub .sub{font-size:.83rem;color:var(--ink2);display:block;margin-top:1px}
+.hub .chev{flex:0 0 auto;color:var(--line);font-size:1.5rem;font-weight:800;line-height:1}
+.hub:hover .chev{color:var(--ink2)}
+.hub.warn{border-color:var(--bad)}
+.hub.warn .ico{background:var(--bad-bg)}
+
+/* rotulo de secao: discreto, so para dar respiro */
+.sec{font-family:var(--body);font-weight:800;font-size:.76rem;letter-spacing:.09em;text-transform:uppercase;color:var(--ink2);margin:26px 0 2px;padding-left:2px}
+
+/* cartao de prova enxuto: informacao densa, um toque so */
+.exam{display:block;width:100%;text-align:left;background:var(--card);border:2px solid var(--line);border-radius:18px;padding:13px 15px;margin:9px 0;box-shadow:var(--shadow);transition:transform .12s ease,border-color .12s ease}
+.exam:hover{border-color:var(--ink)}
+.exam:active{transform:translateY(1px);box-shadow:none}
+.exam.past{opacity:.6}
+.exam h3{font-size:1.14rem}
+.exam .when{font-size:.8rem;font-weight:800;color:var(--ink2);white-space:nowrap}
+.exam .when.soon{color:var(--bad)}
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}
+.chips .tag{font-size:.72rem}
+
+/* cabecalho de sub-tela */
+.subhead{margin:2px 0 6px}
+.subhead h1{font-size:1.5rem}
+.subhead .crumb{font-size:.82rem;color:var(--ink2);font-weight:700}
+
+/* grupo de acoes dentro de um cartao */
+.acts{display:grid;gap:8px;margin-top:11px}
+@media (min-width:480px){.acts.two{grid-template-columns:1fr 1fr}}
+.acts .btn{width:100%}
+.btn.ghost.danger{border-color:var(--bad);color:var(--bad);box-shadow:none}
+
 /* navegação */
 .nav{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:2px solid var(--line);padding:6px 10px calc(6px + env(safe-area-inset-bottom,0px));display:flex;justify-content:center;gap:6px;z-index:5}
 .nav button{flex:1;max-width:200px;border:0;background:none;border-radius:12px;padding:6px 4px;font-weight:800;font-size:.86rem;color:var(--ink2);min-height:52px}
@@ -846,16 +883,43 @@ function vHoje() {
 }
 function provasBlock() {
   const k = kid(), t = today(); let h = "";
-  h += '<div class="btns"><button class="btn pri grow" data-a="notice">📄 Ler o comunicado</button><button class="btn" data-a="addexam">＋ Na mão</button></div>';
-  if (!k.exams.length) h += '<div class="card"><p class="muted">Envie a foto, o print, o PDF ou o Word que a escola mandou com as datas e conteúdos. Você confere tudo antes de montar o roteiro.</p></div>';
+  h += '<div class="acts two"><button class="btn pri" data-a="notice">📄 Ler o comunicado</button><button class="btn" data-a="addexam">＋ Cadastrar na mão</button></div>';
+  if (!k.exams.length) return h + '<div class="card"><p class="muted">Envie a foto, o print, o PDF ou o Word que a escola mandou com as datas e conteúdos. Você confere tudo antes de montar o roteiro.</p></div>';
+  h += '<div class="sec">Provas</div>';
   k.exams.forEach(e => {
     const past = validD(e.date) && e.date < t;
-    h += '<div class="card' + (past ? " done" : "") + '"><div class="row between"><h2>' + esc(e.subject) + "</h2>" + (validD(e.date) ? '<span class="tag' + (e.date === addDays(t, 1) ? " bad" : "") + '">' + esc(nice(e.date)) + "</span>" : '<span class="tag bad">sem data</span>') + "</div>" +
-      (e.topics ? "<p>" + esc(e.topics) + "</p>" : "") + (e.pages ? '<p class="small muted">Estudar: ' + esc(e.pages) + "</p>" : "") + (matLabel(e) ? '<p class="small muted">\ud83d\udcda ' + esc(matLabel(e)) + "</p>" : "") + (cov(e) ? '<p class="small" style="color:var(--bad)">\u26a0\ufe0f O comunicado pede cerca de ' + cov(e).want + ' p\u00e1gina(s), mas s\u00f3 ' + cov(e).got + ' entrou(aram) no app.</p>' : "") + linksHtml(e) +
-      '<p class="small">' + (k.sessions.some(x => x.examId === e.id) ? '<span class="tag ok">no roteiro</span> ' : '<span class="tag">fora do roteiro</span> ') + (e.nPages ? '<span class="tag ok">' + e.nPages + " material(is) guardado(s)</span>" : '<span class="tag">material ainda não enviado</span>') + "</p>" +
-      '<div class="btns"><button class="btn" data-a="pages" data-id="' + e.id + '">📷 ' + (e.nPages ? "Mais páginas" : "Enviar páginas") + '</button><button class="btn" data-a="paste" data-id="' + e.id + '">📋 Colar texto</button>' + (past ? "" : '<button class="btn pri" data-a="planone" data-id="' + e.id + '">🗓️ ' + (k.sessions.some(x => x.examId === e.id) ? "Refazer roteiro desta prova" : "Montar roteiro desta prova") + "</button>") + '<button class="btn ghost" data-a="editexam" data-id="' + e.id + '">Editar</button><button class="btn ghost" data-a="diag" data-id="' + e.id + '">🔍 O que a IA entendeu</button></div></div>';
+    const dias = validD(e.date) ? Math.round((parseD(e.date) - parseD(t)) / 864e5) : null;
+    const quando = !validD(e.date) ? "sem data" : past ? "já passou" : dias === 0 ? "hoje" : dias === 1 ? "amanhã" : "em " + dias + " dias";
+    const noRot = k.sessions.some(x => x.examId === e.id), c = cov(e);
+    h += '<button class="exam' + (past ? " past" : "") + '" data-a="examdet" data-id="' + e.id + '"><div class="row between"><h3 class="grow">' + esc(e.subject) + '</h3><span class="when' + (!past && dias !== null && dias <= 1 ? " soon" : "") + '">' + esc(quando) + "</span></div>" +
+      (validD(e.date) ? '<div class="small muted">' + esc(nice(e.date)) + "</div>" : "") +
+      (e.topics ? '<p class="small" style="margin:6px 0 0">' + esc(e.topics.slice(0, 110)) + (e.topics.length > 110 ? "…" : "") + "</p>" : "") +
+      '<div class="chips">' +
+      (noRot ? '<span class="tag ok">no roteiro</span>' : '<span class="tag">fora do roteiro</span>') +
+      (e.nPages ? '<span class="tag ok">' + e.nPages + " material(is)</span>" : '<span class="tag bad">sem material</span>') +
+      (!validD(e.date) ? '<span class="tag bad">falta a data</span>' : "") +
+      (c ? '<span class="tag bad">falta página</span>' : "") +
+      (linksOf(e).length ? '<span class="tag">' + (hasVideo(e) ? "▶️ vídeo" : "🔗 link") + "</span>" : "") +
+      "</div></button>";
   });
-  if (k.exams.length) h += '<div class="card"><h2>Roteiro de todas as provas</h2><p class="muted small">' + (k.sessions.length ? "Refaz o roteiro de todas as provas de uma vez. O que já foi feito continua marcado. Para mexer em uma só, use o botão dentro da prova." : "Confira datas e conteúdos acima. Com as páginas enviadas, as perguntas ficam iguais ao que cai na prova.") + '</p><div class="btns"><button class="btn pri block" data-a="plan">' + (k.sessions.length ? "Montar de novo com todas" : "Montar o roteiro de todas") + "</button></div></div>";
+  h += '<div class="card"><h2>Roteiro de todas as provas</h2><p class="muted small">' + (k.sessions.length ? "Refaz o roteiro de todas de uma vez. O que a criança já concluiu continua marcado. Para mexer em uma só, entre na prova." : "Confira datas e conteúdos acima. Com o material enviado, as perguntas ficam parecidas com o que cai na prova.") + '</p><div class="acts"><button class="btn pri" data-a="plan">' + (k.sessions.length ? "Montar de novo com todas" : "Montar o roteiro de todas") + "</button></div></div>";
+  return h;
+}
+function vExamDet() {
+  const e = examOf(ui.arg), k = kid(), t = today(); if (!e) { ui.screen = "pprovas"; return vPProvas(); }
+  const dias = validD(e.date) ? Math.round((parseD(e.date) - parseD(t)) / 864e5) : null;
+  const ss = k.sessions.filter(s => s.examId === e.id);
+  const c = cov(e);
+  let h = '<button class="link" data-a="pprovas">‹ Provas</button><div class="subhead"><div class="crumb">' + (validD(e.date) ? esc(nice(e.date)) + (dias !== null && dias >= 0 ? " · " + (dias === 0 ? "hoje" : dias === 1 ? "amanhã" : "em " + dias + " dias") : "") : "sem data") + '</div><h1><span class="mk">' + esc(e.subject) + "</span></h1></div>";
+  h += '<div class="card"><h2>O que cai</h2>' + (e.topics ? "<p>" + esc(e.topics) + "</p>" : '<p class="muted small">Nada anotado. Toque em Editar para escrever.</p>') +
+    (e.pages ? '<p class="small muted" style="margin-top:6px"><b>Estudar:</b> ' + esc(e.pages) + "</p>" : "") +
+    (matLabel(e) ? '<p class="small muted">📚 ' + esc(matLabel(e)) + "</p>" : "") + linksHtml(e) +
+    '<div class="acts"><button class="btn ghost" data-a="editexam" data-id="' + e.id + '">Editar esta prova</button></div></div>';
+  h += '<div class="card"><h2>Material de estudo</h2><p class="small">' + (e.nPages ? '<span class="tag ok">' + e.nPages + " material(is) guardado(s)</span>" : '<span class="tag bad">nada enviado ainda</span>') + "</p>" +
+    (c ? '<p class="small" style="color:var(--bad)">⚠️ O comunicado pede cerca de ' + c.want + " página(s), mas só " + c.got + " entrou(aram) no app. Sem elas, o roteiro e o quiz não cobrem a matéria toda.</p>" : "") +
+    '<div class="acts two"><button class="btn pri" data-a="pages" data-id="' + e.id + '">📷 ' + (e.nPages ? "Enviar mais páginas" : "Tirar foto das páginas") + '</button><button class="btn" data-a="paste" data-id="' + e.id + '">📋 Colar texto</button></div></div>';
+  h += '<div class="card"><h2>Roteiro</h2><p class="small">' + (ss.length ? '<span class="tag ok">' + ss.length + " parte(s) · " + ss.filter(s => s.done).length + " feita(s)</span>" : '<span class="tag">ainda não montado</span>') + "</p>" +
+    '<div class="acts"><button class="btn pri" data-a="planone" data-id="' + e.id + '">🗓️ ' + (ss.length ? "Refazer o roteiro desta prova" : "Montar o roteiro desta prova") + '</button><button class="btn ghost" data-a="diag" data-id="' + e.id + '">🔍 O que a IA entendeu</button></div></div>';
   return h;
 }
 function vNotice() {
@@ -898,27 +962,72 @@ function vResult() {
     (z.wrong.length ? '<p class="muted small" style="text-align:left">Vale reler: ' + esc([...new Set(z.wrong.map(w => w.topic).filter(Boolean))].join("; ") || "as perguntas que você errou") + ". Esses pontos voltam na revisão.</p>" : "") +
     '<div class="btns"><button class="btn pri block" data-a="endquiz">Concluir</button>' + (z.wrong.length ? '<button class="btn block" data-a="retryquiz">Treinar de novo com perguntas novas</button>' : "") + "</div></div>";
 }
+function hubRow(act, ico, titulo, sub, warn) {
+  return '<button class="hub' + (warn ? " warn" : "") + '" data-a="' + act + '"><span class="ico">' + ico + '</span><span class="grow"><span class="tt">' + esc(titulo) + '</span><span class="sub">' + esc(sub) + '</span></span><span class="chev">›</span></button>';
+}
 function vPais() {
-  const k = kid(), t = today(); let h = header("Pais") + aiBanner();
-  h += '<h2 style="margin-top:6px">Provas e material</h2>' + provasBlock();
-  h += '<h2 style="margin-top:22px">Como ' + esc(k.name) + ' est\u00e1 indo</h2>';
-  if (!k.exams.length) h += '<div class="card"><p class="muted">Quando houver provas cadastradas, o progresso aparece aqui.</p></div>';
+  const k = kid(), t = today();
+  const comMat = k.exams.filter(e => e.nPages).length;
+  const ss = k.sessions, feitas = ss.filter(s => s.done).length;
+  const semData = k.exams.filter(e => !validD(e.date)).length;
+  const buraco = k.exams.filter(e => cov(e)).length;
+  const prox = k.exams.filter(e => validD(e.date) && e.date >= t).sort((a, b) => a.date.localeCompare(b.date))[0];
+  let h = header("Pais");
+  h += '<p class="muted small" style="margin:-4px 0 2px">' + esc(k.name) + " · " + esc(k.grade) + (prox ? " · próxima prova " + esc(nice(prox.date)) : "") + "</p>";
+  h += '<div class="sec">O estudo</div>';
+  h += hubRow("pprovas", "📝", "Provas e material",
+    !k.exams.length ? "nenhuma prova cadastrada" : k.exams.length + " prova(s) · " + comMat + " com material" + (semData ? " · " + semData + " sem data" : "") + (buraco ? " · falta material" : ""),
+    !k.exams.length || !!semData || !!buraco);
+  h += hubRow("pprog", "📊", "Como " + k.name + " está indo",
+    ss.length ? feitas + " de " + ss.length + " partes feitas" : "roteiro ainda não montado");
+  h += hubRow("pajustes", "⚙️", "Ajustes do estudo",
+    PACE[paceOf()].label + " · " + S.settings.minutes + " min por dia" + (S.settings.weekends ? " · com fim de semana" : ""));
+  h += '<div class="sec">O aplicativo</div>';
+  h += hubRow("pia", "🤖", "Inteligência artificial",
+    sample ? (R.key ? "Gemini e Groq ligados" : "Gemini ligado · sem a segunda IA") : "falta ligar — sem ela não há quiz", !sample);
+  h += hubRow("pavancado", "🔐", "Senha, cópia e diagnóstico",
+    (PINV ? "senha ligada" : "sem senha") + " · cópia de segurança · diário");
+  h += '<p class="small muted" style="margin-top:18px">As explicações e perguntas são feitas por IA a partir do material enviado e podem conter erros. Na dúvida, vale o que está no livro e o que a professora ensinou.</p>';
+  return h;
+}
+function subHead(titulo, sub) {
+  return '<button class="link" data-a="ppais">‹ Pais</button><div class="subhead">' + (sub ? '<div class="crumb">' + esc(sub) + "</div>" : "") + "<h1>" + esc(titulo) + "</h1></div>";
+}
+function vPProvas() { return subHead("Provas e material") + aiBanner() + provasBlock(); }
+function vPProg() {
+  const k = kid(); let h = subHead("Como " + k.name + " está indo", k.grade);
+  if (!k.exams.length) return h + '<div class="card"><p class="muted">Quando houver provas cadastradas, o progresso aparece aqui.</p></div>';
   k.exams.forEach(e => {
     const ss = k.sessions.filter(s => s.examId === e.id), dn = ss.filter(s => s.done).length, sc = ss.filter(s => s.score);
     const avg = sc.length ? Math.round(sc.reduce((a, s) => a + s.score.right / s.score.total, 0) / sc.length * 100) : null;
     const weak = [...new Set(e.misses.map(m => m.topic).filter(Boolean))].slice(-5);
-    h += '<div class="card"><div class="row between"><h3>' + esc(e.subject) + '</h3><span class="small muted">' + (validD(e.date) ? esc(nice(e.date)) : "sem data") + '</span></div><div class="bar"><i style="width:' + (ss.length ? Math.round(dn / ss.length * 100) : 0) + '%"></i></div><p class="small">' + dn + " de " + ss.length + " sessões feitas" + (avg !== null ? " · acertos no quiz: <b>" + avg + "%</b>" : "") + "</p>" +
+    h += '<div class="card"><div class="row between"><h3>' + esc(e.subject) + '</h3><span class="small muted">' + (validD(e.date) ? esc(nice(e.date)) : "sem data") + '</span></div><div class="bar"><i style="width:' + (ss.length ? Math.round(dn / ss.length * 100) : 0) + '%"></i></div><p class="small">' + dn + " de " + ss.length + " partes feitas" + (avg !== null ? ' · acertos no quiz: <b>' + avg + "%</b>" : "") + "</p>" +
       (weak.length ? '<p class="small"><b>Pontos de atenção:</b> ' + esc(weak.join("; ")) + "</p>" : "") + "</div>";
   });
-  h += '<div class="card"><h2>Inteligência artificial</h2>' + (sample ? '<p class="small"><span class="tag ok">ligada</span> ' + esc(G.model || (G.models && G.models[0]) || "Gemini") + '</p><p class="small muted">A chave fica guardada só neste aparelho e não entra na cópia de segurança.</p><div class="btns"><button class="btn ghost" data-a="goff">Desligar e apagar a chave</button></div>' : '<p class="small muted">Cole aqui a chave gratuita do Gemini (Google AI Studio). Ela fica só neste aparelho.</p><label for="gkey">Chave do Gemini</label><input id="gkey" type="password" autocomplete="off" placeholder="Cole a chave (começa com AQ. ou AIza)"><div class="btns"><button class="btn pri block" data-a="gsave">Salvar e testar</button></div>') + "</div>";
-  h += '<div class="card"><h2>Segunda IA (opcional)</h2>' + (R.key ? '<p class="small"><span class="tag ok">ligada</span> ' + esc(R.model || R.models[0] || "Groq") + '</p><p class="small muted">O Groq cuida do roteiro, da explica\u00e7\u00e3o e do quiz, que ficam bem mais r\u00e1pidos nele. Ler foto, PDF e v\u00eddeo continua sempre no Gemini.</p><div class="btns"><button class="btn ghost" data-a="roff">Desligar e apagar a chave</button></div>' : '<p class="small muted">Opcional, e deixa o roteiro, a explica\u00e7\u00e3o e o quiz bem mais r\u00e1pidos. Chave gratuita em console.groq.com. Ler foto, PDF e v\u00eddeo continua sempre no Gemini.</p><label for="rkey">Chave do Groq</label><input id="rkey" type="password" autocomplete="off" placeholder="Cole a chave (come\u00e7a com gsk_)"><div class="btns"><button class="btn pri block" data-a="rsave">Salvar e testar</button></div>') + '</div>';
-  h += '<div class="card"><h2>Ajustes do roteiro</h2><label for="smin">Tempo máximo de estudo por dia</label><select id="smin" data-c="minutes">' + [30, 45, 60, 90].map(m => '<option value="' + m + '"' + (S.settings.minutes === m ? " selected" : "") + ">" + m + " minutos</option>").join("") + '</select><label class="row" style="font-weight:600;margin-top:12px"><input type="checkbox" data-c="weekends"' + (S.settings.weekends ? " checked" : "") + ' style="width:22px;height:22px"> Estudar também no fim de semana</label><p class="small muted">Vale para o próximo roteiro montado.</p></div>';
-  h += '<div class="card"><h2>Crian\u00e7as</h2>' + S.kids.map(x => '<div style="padding:8px 0;border-bottom:1.5px dashed var(--line)"><div class="row between"><span><b>' + esc(x.name) + "</b> \u00b7 " + esc(x.grade) + '</span><button class="link" data-a="delkid" data-id="' + x.id + '">remover</button></div><label for="pc' + x.id + '" class="small">Ritmo de estudo</label><select id="pc' + x.id + '" data-c="pace" data-id="' + x.id + '">' + PACEK.map(pk => '<option value="' + pk + '"' + (paceOf(x) === pk ? " selected" : "") + ">" + PACE[pk].label + "</option>").join("") + '</select><p class="small muted">' + esc(PACE[paceOf(x)].dica) + "</p></div>").join("") + '<div class="btns"><button class="btn" data-a="newkid">\uff0b Adicionar crian\u00e7a</button><button class="btn ghost" data-a="newweek">Nova semana de provas</button></div></div>';
+  return h;
+}
+function vPAjustes() {
+  let h = subHead("Ajustes do estudo");
+  h += '<div class="card"><h2>Ritmo de cada criança</h2><p class="small muted">Define quanto conteúdo entra em cada parte. É este o ajuste para quem precisa de mais tempo — aumentar os minutos por dia não resolve isso.</p>' +
+    S.kids.map(x => '<label for="pc' + x.id + '" style="margin-top:14px">' + esc(x.name) + " · " + esc(x.grade) + '</label><select id="pc' + x.id + '" data-c="pace" data-id="' + x.id + '">' + PACEK.map(pk => '<option value="' + pk + '"' + (paceOf(x) === pk ? " selected" : "") + ">" + PACE[pk].label + "</option>").join("") + '</select><p class="small muted">' + esc(PACE[paceOf(x)].dica) + "</p>").join("") + "</div>";
+  h += '<div class="card"><h2>Tempo disponível</h2><p class="small muted">Não define o tamanho das partes: serve para o app avisar quando o conteúdo não cabe no tempo que sobra até a prova.</p><label for="smin">Tempo máximo por dia</label><select id="smin" data-c="minutes">' + [30, 45, 60, 90].map(m => '<option value="' + m + '"' + (S.settings.minutes === m ? " selected" : "") + ">" + m + " minutos</option>").join("") + '</select><label class="row" style="font-weight:600;margin-top:14px"><input type="checkbox" data-c="weekends"' + (S.settings.weekends ? " checked" : "") + ' style="width:22px;height:22px"> Estudar também no fim de semana</label></div>';
+  h += '<div class="card"><h2>Crianças</h2>' + S.kids.map(x => '<div class="row between" style="padding:8px 0;border-bottom:1.5px dashed var(--line)"><span><b>' + esc(x.name) + "</b> · " + esc(x.grade) + '</span><button class="link" data-a="delkid" data-id="' + x.id + '">remover</button></div>').join("") + '<div class="acts"><button class="btn" data-a="newkid">＋ Adicionar criança</button><button class="btn ghost danger" data-a="newweek">Começar uma nova semana de provas</button></div></div>';
+  return h;
+}
+function vPIA() {
+  let h = subHead("Inteligência artificial");
+  h += '<div class="card"><h2>Gemini</h2><p class="small muted">Lê as fotos, o PDF, o Word e o vídeo do YouTube. É o único gratuito que faz isso, então sem ele o app não lê material.</p>' +
+    (sample ? '<p class="small"><span class="tag ok">ligada</span> ' + esc(G.model || (G.models || [])[0] || "Gemini") + '</p><p class="small muted">A chave fica só neste aparelho e não entra na cópia de segurança.</p><div class="acts"><button class="btn ghost danger" data-a="goff">Desligar e apagar a chave</button></div>' : '<label for="gkey">Chave do Gemini</label><input id="gkey" type="password" autocomplete="off" placeholder="Cole a chave (começa com AQ. ou AIza)"><div class="acts"><button class="btn pri" data-a="gsave">Salvar e testar</button></div>') + "</div>";
+  h += '<div class="card"><h2>Groq <span class="small muted" style="font-weight:600">opcional</span></h2><p class="small muted">Cuida do roteiro, da explicação e do quiz, que ficam bem mais rápidos nele. Não enxerga foto nem vídeo.</p>' +
+    (R.key ? '<p class="small"><span class="tag ok">ligada</span> ' + esc(R.model || (R.models || [])[0] || "Groq") + '</p><div class="acts"><button class="btn ghost danger" data-a="roff">Desligar e apagar a chave</button></div>' : '<label for="rkey">Chave do Groq</label><input id="rkey" type="password" autocomplete="off" placeholder="Cole a chave (começa com gsk_)"><div class="acts"><button class="btn pri" data-a="rsave">Salvar e testar</button></div>') + "</div>";
+  return h;
+}
+function vPAvancado() {
+  let h = subHead("Senha, cópia e diagnóstico");
   h += pinCard();
-  h += '<div class="card"><h2>Di\u00e1rio t\u00e9cnico</h2><p class="small muted">As \u00faltimas coisas que a IA fez neste aparelho. Serve para entender por que algo demorou ou falhou.</p>' + (LOG.length ? '<div style="max-height:320px;overflow:auto;margin-top:8px">' + LOG.map(l => '<div class="row between" style="padding:6px 0;border-bottom:1.5px dashed var(--line);gap:8px"><span class="grow small"><b>' + esc(l.tarefa) + '</b> <span class="muted">' + esc(l.ia) + " \u00b7 " + esc(String(l.modelo || "")) + '</span><br><span class="muted" style="font-size:.8rem">' + esc(l.hora) + " \u00b7 " + esc(String(l.seg)) + "s \u00b7 entrada " + esc(String(l.entrada)) + " car." + (l.fotos ? " \u00b7 " + esc(String(l.fotos)) + " foto(s)" : "") + (l.ok ? " \u00b7 sa\u00edda " + esc(String(l.saida)) + " car." : "") + '</span></span><span class="tag ' + (l.ok ? "ok" : "bad") + '">' + (l.ok ? "ok" : esc(String(l.erro))) + "</span></div>").join("") + "</div>" + '<div class="btns"><button class="btn ghost" data-a="clearlog">Limpar di\u00e1rio</button></div>' : '<p class="small muted">Nada registrado ainda.</p>') + "</div>";
-  h += '<div class="card"><h2>Cópia de segurança</h2><p class="small muted">' + (storageOk ? "Os dados ficam só neste aparelho e neste navegador." : "<b>Atenção:</b> este navegador não está deixando salvar; ao fechar, os dados se perdem.") + ' Para levar a outro aparelho, copie o código e cole lá.</p><div class="btns"><button class="btn ghost" data-a="export">Mostrar código</button><button class="btn ghost" data-a="import">Colar código</button></div>' +
-    (ui.form.io ? '<textarea id="io" style="margin-top:10px;font-size:.78rem" ' + (ui.form.io === "export" ? "readonly>" + esc(JSON.stringify(S)) : 'placeholder="Cole o código aqui">') + "</textarea>" + (ui.form.io === "import" ? '<div class="btns"><button class="btn pri" data-a="doimport">Restaurar</button></div>' : "") : "") + "</div>";
-  h += '<p class="small muted">As explicações e perguntas são feitas por IA a partir do material enviado e podem conter erros. Na dúvida, vale o que está no livro e o que a professora ensinou.</p>';
+  h += '<div class="card"><h2>Cópia de segurança</h2><p class="small muted">' + (storageOk ? "Os dados ficam só neste aparelho e neste navegador." : "<b>Atenção:</b> este navegador não está deixando salvar; ao fechar, os dados se perdem.") + ' Para levar a outro aparelho, copie o código e cole lá. A chave da IA não vai junto.</p><div class="acts two"><button class="btn ghost" data-a="export">Mostrar código</button><button class="btn ghost" data-a="import">Colar código</button></div>' +
+    (ui.form.io ? '<textarea id="io" style="margin-top:10px;font-size:.78rem" ' + (ui.form.io === "export" ? "readonly>" + esc(JSON.stringify(S)) : 'placeholder="Cole o código aqui">') + "</textarea>" + (ui.form.io === "import" ? '<div class="acts"><button class="btn pri" data-a="doimport">Restaurar</button></div>' : "") : "") + "</div>";
+  h += '<div class="card"><h2>Diário técnico</h2><p class="small muted">As últimas coisas que a IA fez neste aparelho. Serve para entender por que algo demorou ou falhou.</p>' + (LOG.length ? '<div style="max-height:300px;overflow:auto;margin-top:8px">' + LOG.map(l => '<div class="row between" style="padding:6px 0;border-bottom:1.5px dashed var(--line);gap:8px"><span class="grow small"><b>' + esc(l.tarefa) + '</b> <span class="muted">' + esc(l.ia) + " · " + esc(String(l.modelo || "")) + '</span><br><span class="muted" style="font-size:.8rem">' + esc(l.hora) + " · " + esc(String(l.seg)) + "s · entrada " + esc(String(l.entrada)) + " car." + (l.fotos ? " · " + esc(String(l.fotos)) + " foto(s)" : "") + (l.ok ? " · saída " + esc(String(l.saida)) + " car." : "") + '</span></span><span class="tag ' + (l.ok ? "ok" : "bad") + '">' + (l.ok ? "ok" : esc(String(l.erro))) + "</span></div>").join("") + "</div>" + '<div class="acts"><button class="btn ghost" data-a="clearlog">Limpar diário</button></div>' : '<p class="small muted">Nada registrado ainda.</p>') + "</div>";
   return h;
 }
 function vDiag() {
@@ -945,6 +1054,7 @@ function vPages() {
 }
 function render() {
   const k = kid(); let h;
+  if (ui.screen && /^(pprovas|pprog|pajustes|pia|pavancado|examdet)$/.test(ui.screen) && (ui.tab !== "pais" || locked())) ui.screen = null;
   if (!k || ui.screen === "welcome") h = vWelcome();
   else if (ui.screen === "notice") h = vNotice();
   else if (ui.screen === "exam") h = vExamForm();
@@ -954,6 +1064,12 @@ function render() {
   else if (ui.screen === "session") h = vSession();
   else if (ui.screen === "quiz") h = vQuiz();
   else if (ui.screen === "result") h = vResult();
+  else if (ui.screen === "pprovas") h = vPProvas();
+  else if (ui.screen === "pprog") h = vPProg();
+  else if (ui.screen === "pajustes") h = vPAjustes();
+  else if (ui.screen === "pia") h = vPIA();
+  else if (ui.screen === "pavancado") h = vPAvancado();
+  else if (ui.screen === "examdet") h = vExamDet();
   else if (ui.tab === "pais") h = locked() ? vLock() : vPais();
   else h = vHoje();
   if (k && !ui.screen) h += '<nav class="nav" aria-label="Seções">' + [["hoje", "📅", "Estudar"], ["pais", "🔒", "Pais"]].map(([t, ic, l]) => '<button data-a="tab" data-t="' + t + '"' + (ui.tab === t ? ' aria-current="page"' : "") + '><span class="ic">' + ic + "</span>" + l + "</button>").join("") + "</nav>";
@@ -1022,6 +1138,13 @@ const A = {
   rsolve() { const r = ui.riddle, v = ($("#rans") ? $("#rans").value : "").replace(/\D/g, ""); if (!r) return; if (+v !== r.a * r.b) { newRiddle(); return toast("N\u00e3o \u00e9 esse. Tente a conta nova."); } PINV = ""; savePin(); ui.unlocked = true; ui.riddle = null; toast("Senha removida. Escolha uma nova em Pais."); },
   pset() { const v = ($("#pnew") ? $("#pnew").value : "").replace(/\D/g, ""); if (v.length !== 4) return toast("A senha precisa ter 4 n\u00fameros."); PINV = v; savePin(); ui.unlocked = true; toast("Senha guardada. Anote em algum lugar seguro."); },
   poff() { confirmBox("Tirar a senha dos pais? Seu filho vai poder entrar aqui.", () => { PINV = ""; savePin(); }, "Tirar"); },
+  pprovas() { ui.screen = "pprovas"; ui.form = {}; window.scrollTo(0, 0); },
+  pprog() { ui.screen = "pprog"; window.scrollTo(0, 0); },
+  pajustes() { ui.screen = "pajustes"; window.scrollTo(0, 0); },
+  pia() { ui.screen = "pia"; window.scrollTo(0, 0); },
+  pavancado() { ui.screen = "pavancado"; ui.form = {}; window.scrollTo(0, 0); },
+  ppais() { ui.screen = null; ui.form = {}; window.scrollTo(0, 0); },
+  examdet(d) { ui.arg = d.id; ui.screen = "examdet"; window.scrollTo(0, 0); },
   clearlog() { LOG = []; saveLog(); },
   export() { ui.form.io = ui.form.io === "export" ? null : "export"; },
   import() { ui.form.io = ui.form.io === "import" ? null : "import"; },
