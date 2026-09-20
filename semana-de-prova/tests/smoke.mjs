@@ -415,8 +415,8 @@ console.log("\n10. roteiro como lista livre (sem dia fixo)");
   ok(w.document.getElementById("app").innerHTML.includes("1 de 3 partes feitas"), "progresso acompanha o que foi feito");
 
   // aviso de cobertura no cartao da prova
-  t.ui.tab = "provas"; w.render();
-  ok(w.document.getElementById("app").innerHTML.includes("só 2 entrou"), "cartão avisa que falta material");
+  t.ui.tab = "pais"; t.ui.unlocked = true; w.render();
+  ok(w.document.getElementById("app").innerHTML.includes("só 2 entrou"), "cartão avisa que falta material (agora em Pais)");
 }
 
 /* ================= 11. aviso quando não cabe ================= */
@@ -440,6 +440,93 @@ console.log("\n11. aviso quando não cabe no ritmo");
   t.ui.confirm = null;
   t.A.planone({ id: "e1" });
   ok(!(t.ui.confirm && t.ui.confirm.opts), "com tempo de sobra não avisa");
+}
+
+/* ================= 12. área dos pais trancada ================= */
+console.log("\n12. área dos pais trancada");
+{
+  const { w, t } = await boot([]);
+  const setv = (id, v) => w.eval('document.getElementById("' + id + '").value = ' + JSON.stringify(v));
+  t.ui.form = { name: "Lulu", grade: "5º ano" }; t.A.savekid();
+
+  // sem senha, Pais abre e oferece criar uma
+  t.ui.tab = "pais"; w.render();
+  let html = w.document.getElementById("app").innerHTML;
+  ok(html.includes("Senha dos pais"), "Pais oferece criar a senha");
+  ok(html.includes("Provas e material"), "Pais agora contém a gestão das provas");
+  ok(!html.includes("Área dos pais"), "sem senha não tranca");
+  ok(html.includes("Estudar"), "aba Estudar existe");
+  ok(!/data-a="tab" data-t="provas"><span/.test(html), "aba Provas saiu da navegação");
+
+  // define a senha usando o campo real da tela
+  setv("pnew", "1234"); t.A.pset();
+  eq(w.eval("PINV"), "1234", "senha guardada");
+  ok(w.eval("!!localStorage.getItem('semana-de-prova:pin')"), "senha fica no aparelho");
+  ok(!JSON.stringify(t.S).includes("1234"), "senha não entra no estado nem na cópia de segurança");
+
+  // sair e voltar: tranca
+  t.ui.unlocked = false; t.ui.tab = "pais"; w.render();
+  html = w.document.getElementById("app").innerHTML;
+  ok(html.includes("Área dos pais"), "com senha, tranca");
+  ok(!html.includes("Provas e material"), "conteúdo dos pais fica escondido");
+  ok(!html.includes("Cópia de segurança"), "cópia de segurança escondida");
+  ok(!html.includes("Chave do Gemini"), "campo da chave escondido");
+  ok(html.includes("Voltar para o estudo"), "oferece voltar para o estudo");
+
+  // senha errada não abre
+  setv("pin", "9999"); t.A.punlock();
+  ok(!t.ui.unlocked, "senha errada não destranca");
+  // senha certa abre
+  setv("pin", "1234"); t.A.punlock();
+  ok(t.ui.unlocked, "senha certa destranca");
+  w.render();
+  ok(w.document.getElementById("app").innerHTML.includes("Provas e material"), "destrancada, mostra o conteúdo");
+
+  // a criança continua com o estudo livre
+  t.ui.unlocked = false; t.ui.tab = "hoje"; w.render();
+  ok(!w.document.getElementById("app").innerHTML.includes("Área dos pais"), "a tela de estudo nunca tranca");
+
+  // saída de emergência: a conta
+  t.ui.tab = "pais"; t.A.pforgot(); w.render();
+  const r = JSON.parse(w.eval("JSON.stringify(ui.riddle)"));
+  ok(r && r.a > 10 && r.b > 10, "a conta de emergência foi gerada com dois números de dois dígitos");
+  ok(r.a * r.b > 100, "a conta não é trivial para criança");
+  setv("rans", String(r.a * r.b - 1)); t.A.rsolve();
+  eq(w.eval("PINV"), "1234", "resposta errada mantém a senha");
+  w.render();
+  const r2 = JSON.parse(w.eval("JSON.stringify(ui.riddle)"));
+  setv("rans", String(r2.a * r2.b)); t.A.rsolve();
+  eq(w.eval("PINV"), "", "resposta certa remove a senha");
+  ok(t.ui.unlocked, "e destranca");
+}
+
+/* ================= 13. apagar avisa o que se perde ================= */
+console.log("\n13. apagar avisa o que se perde");
+{
+  const { w, t } = await boot([]);
+  t.ui.form = { name: "Lulu", grade: "5º ano" }; t.A.savekid();
+  const k = t.S.kids[0];
+  k.exams.push({ id: "e1", subject: "Ciências", date: "2099-12-10", topics: "", pages: "", links: [], content: "", blocks: [], material: null, nPages: 0, misses: [], asked: [] });
+  k.sessions.push({ id: "s1", examId: "e1", ord: 1, date: null, type: "estudo", title: "parte 1", minutes: 20, steps: [], done: true, explain: "", score: { right: 4, total: 5, at: "2026-09-20" } });
+
+  t.A.newweek();
+  ok(t.ui.confirm && t.ui.confirm.opts, "nova semana abre escolha, não um sim/não");
+  ok(t.ui.confirm.sub.includes("1 prova"), "diz quantas provas serão perdidas");
+  ok(t.ui.confirm.sub.includes("1 quiz"), "diz quantos quizzes serão perdidos");
+  ok(t.ui.confirm.sub.includes("N\u00e3o tem como desfazer"), "avisa que é irreversível");
+  eq(t.ui.confirm.opts[0].label, "Primeiro salvar uma c\u00f3pia", "a primeira saída é salvar cópia");
+  w.render();
+  ok(w.document.getElementById("app").innerHTML.includes("1 prova"), "o detalhe aparece na tela");
+  // salvar copia nao apaga
+  t.A.copt({ i: "0" });
+  eq(k.exams.length, 1, "salvar cópia não apagou nada");
+
+  // remover crianca tambem avisa
+  t.A.delkid({ id: k.id });
+  ok(t.ui.confirm.sub.includes("Lulu"), "remover criança diz de quem é o que se perde");
+  eq(t.S.kids.length, 1, "nada removido antes de escolher");
+  t.A.copt({ i: "1" });
+  eq(t.S.kids.length, 0, "escolhendo remover, remove");
 }
 
 console.log(`\n${passed} passaram, ${failed} falharam`);
