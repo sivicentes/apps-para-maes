@@ -548,9 +548,9 @@ function pagesPrompt(ex, extraText) {
 }
 function pagesPromptJSON(ex, extraText) {
   return "As imagens (e/ou o texto abaixo) s\u00e3o p\u00e1ginas do material de estudo de " + ex.subject + ", de um aluno do " + kid().grade + " no Brasil, para uma prova sobre: " + (ex.topics || "(assunto n\u00e3o informado)") + ".\n" +
-    "1) IDENTIFIQUE O MATERIAL pelo que estiver impresso na p\u00e1gina (capa, cabe\u00e7alho, rodap\u00e9): sistema ou editora (Objetivo, Anglo, Poliedro, SAS, \u00c1tica, Moderna, FTD...), volume ou caderno, edi\u00e7\u00e3o ou ano, e o n\u00famero impresso da p\u00e1gina. Use \"\" no que n\u00e3o estiver vis\u00edvel. N\u00c3O adivinhe nem deduza.\n" +
+    "1) IDENTIFIQUE O MATERIAL pelo que estiver impresso na p\u00e1gina (capa, cabe\u00e7alho, rodap\u00e9): sistema ou editora (Objetivo, Anglo, Poliedro, SAS, \u00c1tica, Moderna, FTD...), volume ou caderno, edi\u00e7\u00e3o ou ano, e o n\u00famero impresso da p\u00e1gina. Use \"\" no que n\u00e3o estiver vis\u00edvel. N\u00c3O adivinhe nem deduza. IMPORTANTE: uma foto pode mostrar DUAS p\u00e1ginas de uma vez (livro ou apostila aberta). Nesse caso trate cada p\u00e1gina separadamente, com o n\u00famero impresso de cada uma.\n" +
     "2) DIVIDA O CONTE\u00daDO EM BLOCOS, um por assunto. Cada bloco traz uma transcri\u00e7\u00e3o condensada e FIEL: conceitos, defini\u00e7\u00f5es, regras, exemplos resolvidos, f\u00f3rmulas, datas, nomes, vocabul\u00e1rio, e uma frase descrevendo mapas, gr\u00e1ficos ou figuras importantes. Ignore enfeites e instru\u00e7\u00f5es de atividade sem conte\u00fado. N\u00e3o acrescente nada que n\u00e3o esteja nas p\u00e1ginas.\n" +
-    "Em \"conceitos\" liste as palavras-chave daquele bloco. Se uma foto estiver ileg\u00edvel, use um bloco com assunto \"FOTO ILEG\u00cdVEL\".\n" +
+    "Em \"pagina\" ponha o número impresso da página daquele bloco; se ele atravessa duas páginas, escreva as duas assim: \"120-121\". Em \"conceitos\" liste as palavras-chave daquele bloco. Se uma foto estiver ileg\u00edvel, use um bloco com assunto \"FOTO ILEG\u00cdVEL\".\n" +
     "Responda SOMENTE com JSON: {\"material\":{\"sistema\":\"\",\"volume\":\"\",\"edicao\":\"\",\"serie\":\"\"},\"blocos\":[{\"materia\":\"\",\"assunto\":\"\",\"pagina\":\"\",\"conceitos\":[\"\"],\"conteudo\":\"\"}]}" +
     (extraText ? "\n\nTEXTO:\n" + extraText.slice(0, 40000) : "");
 }
@@ -624,13 +624,42 @@ function paceRules(p) {
   if (p === "puxado") return "RITMO PUXADO: esta crian\u00e7a absorve r\u00e1pido. Sess\u00f5es de " + P.min + " a " + P.max + " minutos, cobrindo blocos maiores, por volta de " + P.pags + " p\u00e1ginas por sess\u00e3o. De 2 a 3 passos por sess\u00e3o, diretos.";
   return "RITMO NORMAL: sess\u00f5es de " + P.min + " a " + P.max + " minutos, cobrindo por volta de " + P.pags + " p\u00e1ginas cada. De 2 a 4 passos por sess\u00e3o.";
 }
-/* conta paginas a partir do que a professora escreveu: "120 a 153", "40-52", "12, 15 e 18" */
-function pageCount(pages) {
-  const s = String(pages || ""); let n = 0;
-  s.replace(/(\d{1,4})\s*(?:a|\u00e0|at\u00e9|-|\u2013|\u2014)\s*(\d{1,4})/gi, (m, a, b) => { const x = +a, y = +b; if (y >= x && y - x < 400) n += y - x + 1; return m; });
-  if (n) return n;
-  const nums = s.match(/\d{1,4}/g); return nums ? nums.length : 0;
+/* conjunto de paginas a partir do que a professora (ou a IA) escreveu:
+   "120 a 153", "40-52", "12, 15 e 18", "120-121" (foto de duas paginas) */
+function pageSet(str) {
+  const out = new Set();
+  String(str || "")
+    .replace(/(\d{1,4})\s*(?:a|à|até|-|–|—)\s*(\d{1,4})/gi, (m, a, b) => {
+      const x = +a, y = +b; if (y >= x && y - x < 400) for (let i = x; i <= y; i++) out.add(i);
+      return " ";
+    })
+    .replace(/\d{1,4}/g, n => { out.add(+n); return " "; });
+  return out;
 }
+function pageCount(str) { return pageSet(str).size; }
+/* junta numeros soltos em intervalos legiveis: [135,136,137,146] -> "135 a 137, 146" */
+function faixas(nums) {
+  const out = []; let i = 0;
+  while (i < nums.length) {
+    let j = i; while (j + 1 < nums.length && nums[j + 1] === nums[j] + 1) j++;
+    out.push(i === j ? String(nums[i]) : nums[i] + " a " + nums[j]); i = j + 1;
+  }
+  return out.join(", ");
+}
+/* compara as paginas pedidas no comunicado com as que realmente entraram.
+   Uma foto pode trazer duas paginas, entao contar fotos nao serve: conta
+   numero de pagina mesmo, e so avisa quando falta um numero especifico. */
+function coverage(ex) {
+  const quer = pageSet(ex.pages); if (!quer.size) return null;
+  seedBlocks(ex);
+  const tem = new Set();
+  ex.blocks.forEach(b => pageSet(b.pagina).forEach(n => tem.add(n)));
+  if (!tem.size) return null;
+  const falta = [...quer].filter(n => !tem.has(n)).sort((a, b) => a - b);
+  if (!falta.length) return null;
+  return { want: quer.size, got: quer.size - falta.length, falta, texto: faixas(falta) };
+}
+
 /* estimativa grosseira de quanto cabe ate a prova, no ritmo escolhido */
 function fitCheck(ex, t, p) {
   const days = studyDays(t, addDays(ex.date, -1)).length, pg = pageCount(ex.pages);
@@ -662,14 +691,7 @@ function studyDays(fromS, toS) { const out = []; for (let d = fromS; d <= toS; d
 function mkSession(ex, date, type, title, minutes, steps, ord) {
   return { id: uid(), examId: ex.id, date: date || null, ord: ord || 0, type, title: String(title).slice(0, 90), minutes: Math.max(10, Math.min(60, Number(minutes) || 25)), steps: steps.slice(0, 6).map(t => ({ t: String(t).slice(0, 220), done: false })), done: false, explain: "", score: null };
 }
-/* quanto do material pedido no comunicado realmente entrou no app */
-function coverage(ex) {
-  const want = pageCount(ex.pages); if (!want) return null;
-  seedBlocks(ex); const got = new Set();
-  ex.blocks.forEach(b => { const n = parseInt(b.pagina, 10); if (n) got.add(n); });
-  if (!got.size) return null;
-  return { want, got: got.size, falta: Math.max(0, want - got.size) };
-}
+
 function basicSessions(ex, pace) {
   const P = PACE[pace] || PACE.normal, pg = pageCount(ex.pages);
   const partes = Math.max(1, Math.min(6, pg ? Math.ceil(pg / P.pags) : (ex.content.length > 6000 ? 3 : 2)));
@@ -997,7 +1019,7 @@ function provasBlock() {
       (noRot ? '<span class="tag ok">no roteiro</span>' : '<span class="tag">fora do roteiro</span>') +
       (e.nPages ? '<span class="tag ok">' + e.nPages + " material(is)</span>" : '<span class="tag bad">sem material</span>') +
       (!validD(e.date) ? '<span class="tag bad">falta a data</span>' : "") +
-      (c ? '<span class="tag bad">falta página</span>' : "") +
+      (c ? '<span class="tag bad">falta p. ' + esc(c.texto.slice(0, 16)) + "</span>" : "") +
       (linksOf(e).length ? '<span class="tag">' + (hasVideo(e) ? "▶️ vídeo" : "🔗 link") + "</span>" : "") +
       "</div></button>";
   });
@@ -1015,7 +1037,7 @@ function vExamDet() {
     (matLabel(e) ? '<p class="small muted">📚 ' + esc(matLabel(e)) + "</p>" : "") + linksHtml(e) +
     '<div class="acts"><button class="btn ghost" data-a="editexam" data-id="' + e.id + '">Editar esta prova</button></div></div>';
   h += '<div class="card"><h2>Material de estudo</h2><p class="small">' + (e.nPages ? '<span class="tag ok">' + e.nPages + " material(is) guardado(s)</span>" : '<span class="tag bad">nada enviado ainda</span>') + "</p>" +
-    (c ? '<p class="small" style="color:var(--bad)">⚠️ O comunicado pede cerca de ' + c.want + " página(s), mas só " + c.got + " entrou(aram) no app. Sem elas, o roteiro e o quiz não cobrem a matéria toda.</p>" : "") +
+    (c ? '<p class="small" style="color:var(--bad)">⚠️ Falta o material da(s) página(s) <b>' + esc(c.texto) + "</b>. Sem elas, o roteiro e o quiz não cobrem a matéria toda. Se você fotografou duas páginas numa foto só e mesmo assim aparece aqui, o número de uma delas pode não estar legível.</p>" : "") +
     '<div class="acts two"><button class="btn pri" data-a="pages" data-id="' + e.id + '">📷 ' + (e.nPages ? "Enviar mais páginas" : "Tirar foto das páginas") + '</button><button class="btn" data-a="paste" data-id="' + e.id + '">📋 Colar texto</button></div></div>';
   h += '<div class="card"><h2>Roteiro</h2><p class="small">' + (ss.length ? '<span class="tag ok">' + ss.length + " parte(s) · " + ss.filter(s => s.done).length + " feita(s)</span>" : '<span class="tag">ainda não montado</span>') + "</p>" +
     '<div class="acts"><button class="btn pri" data-a="planone" data-id="' + e.id + '">🗓️ ' + (ss.length ? "Refazer o roteiro desta prova" : "Montar o roteiro desta prova") + '</button><button class="btn ghost" data-a="diag" data-id="' + e.id + '">🔍 O que a IA entendeu</button></div></div>';
@@ -1081,11 +1103,12 @@ function vPais() {
     ss.length ? feitas + " de " + ss.length + " partes feitas" : "roteiro ainda não montado");
   h += hubRow("pajustes", "⚙️", "Ajustes do estudo",
     PACE[paceOf()].label + " · " + S.settings.minutes + " min por dia" + (S.settings.weekends ? " · com fim de semana" : ""));
+  h += hubRow("pcompartilhar", "📤", "Compartilhar", "para outro aparelho seu, ou para as mães da turma");
   h += '<div class="sec">O aplicativo</div>';
   h += hubRow("pia", "🤖", "Inteligência artificial",
     sample ? (R.key ? "Gemini e Groq ligados" : "Gemini ligado · sem a segunda IA") : "falta ligar — sem ela não há quiz", !sample);
-  h += hubRow("pavancado", "🔐", "Senha, cópia e diagnóstico",
-    (PINV ? "senha ligada" : "sem senha") + " · cópia de segurança · diário");
+  h += hubRow("pavancado", "🔐", "Senha e diagnóstico",
+    (PINV ? "senha ligada" : "sem senha") + " · diário técnico");
   h += '<p class="small muted" style="margin-top:18px">As explicações e perguntas são feitas por IA a partir do material enviado e podem conter erros. Na dúvida, vale o que está no livro e o que a professora ensinou.</p>';
   return h;
 }
@@ -1205,20 +1228,32 @@ function vPIA() {
   h += '<p class="small muted">Trate a chave como senha: ela é sua e está ligada à sua conta na Google. Não publique nem mande para quem não for de casa.</p>';
   return h;
 }
+function vPCompartilhar() {
+  const k = kid(), f = ui.form;
+  let h = subHead("Compartilhar");
+  h += '<div class="card"><h2>👤 Para outro aparelho meu</h2><p class="small muted">Seu celular, seu computador, os tablets dos seus filhos. Leva <b>tudo</b>: provas, roteiro, material, e também o nome, o progresso e as notas de ' + esc(k.name) + '.</p>' +
+    '<p class="small" style="color:var(--bad)"><b>Não mande isto para outra mãe</b> — são dados dos seus filhos.</p>' +
+    '<div class="acts two"><button class="btn pri" data-a="iocopy">📋 Copiar</button>' + (podeCompartilhar() ? '<button class="btn" data-a="ioshare">📤 Enviar</button>' : '<button class="btn" data-a="export">Ver o código</button>') + "</div>" +
+    '<div class="acts"><button class="btn ghost" data-a="import">Colar um código meu aqui</button></div>' +
+    (f.io ? '<textarea id="io" style="margin-top:10px;font-size:.78rem" ' + (f.io === "export" ? "readonly>" + esc(JSON.stringify(S)) : 'placeholder="Cole aqui a cópia que veio do seu outro aparelho">') + "</textarea>" + (f.io === "import" ? '<div class="acts"><button class="btn pri" data-a="doimport">Restaurar</button></div>' : "") : "") + "</div>";
+  h += '<div class="card"><h2>👭 Para as mães da turma</h2><p class="small muted">Leva só o que é da sala: provas, datas, o que cai, páginas, links da professora, o material que a IA já leu e o roteiro pronto.</p>' +
+    '<p class="small"><span class="tag ok">nada de ' + esc(k.name) + ' vai junto</span> <span class="small muted">nem nome, nem progresso, nem notas, nem os erros dos quizzes.</span></p>' +
+    '<p class="small muted">Quem receber não precisa de chave de IA para usar o roteiro: ele chega pronto. A chave só faz falta para explicação, quiz e para ler material novo.</p>' +
+    '<div class="acts two"><button class="btn pri" data-a="tcopy">📋 Copiar o código da turma</button><button class="btn ghost" data-a="tcopylite">Sem o material lido</button></div>' +
+    '<div class="acts"><button class="btn ghost" data-a="tpaste">Colar um código de turma</button></div>' +
+    (f.turma === "paste" ? '<label for="tio" style="margin-top:10px">Código que você recebeu</label><textarea id="tio" placeholder="Cole aqui o código que outra mãe mandou"></textarea><div class="acts"><button class="btn pri" data-a="tdoimport">Somar ao meu app</button></div><p class="small muted">Isso <b>soma</b>: nada do seu filho é apagado. Prova que você já tem não duplica, e o roteiro só entra em prova que ainda não tem um.</p>' : "") + "</div>";
+  h += '<div class="note"><p class="small"><b>Qual deles usar?</b> Se for para um aparelho seu, o de cima. Se for para outra mãe, o de baixo. Os dois viram um texto que você manda por WhatsApp ou e-mail.</p></div>';
+  return h;
+}
 function vPAvancado() {
-  let h = subHead("Senha, cópia e diagnóstico");
+  let h = subHead("Senha e diagnóstico");
   h += vDevCard();
   h += pinCard();
-  const full = JSON.stringify(S), leve = estadoLeve();
-  h += '<div class="card"><h2>Levar para outro aparelho</h2><p class="small muted">' + (storageOk ? "Os dados ficam só neste aparelho e neste navegador." : "<b>Atenção:</b> este navegador não está deixando salvar; ao fechar, os dados se perdem.") + ' Para levar ao celular ou ao tablet: copie o código aqui, mande para você mesma por WhatsApp ou e-mail, abra o app lá e cole.</p>' +
-    '<div class="acts two"><button class="btn pri" data-a="iocopy">📋 Copiar o código (' + kb(full) + ')</button>' +
-    (podeCompartilhar() ? '<button class="btn" data-a="ioshare">📤 Enviar</button>' : '<button class="btn" data-a="export">Ver o código</button>') + "</div>" +
-    (full.length > 60000 ? '<p class="small" style="color:var(--bad);margin-top:8px">⚠️ Esse código é grande e pode não caber numa mensagem. Use a cópia leve abaixo e depois reenvie as fotos das páginas no outro aparelho.</p>' : "") +
-    '<div class="acts"><button class="btn ghost" data-a="iolite">🪶 Copiar cópia leve, sem o material lido (' + kb(leve) + ')</button><button class="btn ghost" data-a="import">Colar um código aqui</button></div>' +
-    (ui.form.io ? '<textarea id="io" style="margin-top:10px;font-size:.78rem" ' + (ui.form.io === "export" ? "readonly>" + esc(full) : 'placeholder="Cole o código que você copiou do outro aparelho">') + "</textarea>" + (ui.form.io === "import" ? '<div class="acts"><button class="btn pri" data-a="doimport">Restaurar</button></div>' : "") : "") +
-    '<p class="small muted" style="margin-top:8px">A chave da IA não vai no código. Para levá-la, use "mostrar a chave" em Inteligência artificial.</p></div>';
-
-  h += '<div class="card"><h2>Diário técnico</h2><p class="small muted">As últimas coisas que a IA fez neste aparelho. Serve para entender por que algo demorou ou falhou.</p>' + (LOG.length ? '<div style="max-height:300px;overflow:auto;margin-top:8px">' + LOG.map(l => '<div class="row between" style="padding:6px 0;border-bottom:1.5px dashed var(--line);gap:8px"><span class="grow small"><b>' + esc(l.tarefa) + '</b> <span class="muted">' + esc(l.ia) + " · " + esc(String(l.modelo || "")) + '</span><br><span class="muted" style="font-size:.8rem">' + esc(l.hora) + " · " + esc(String(l.seg)) + "s · entrada " + esc(String(l.entrada)) + " car." + (l.fotos ? " · " + esc(String(l.fotos)) + " foto(s)" : "") + (l.ok ? " · saída " + esc(String(l.saida)) + " car." : "") + '</span></span><span class="tag ' + (l.ok ? "ok" : "bad") + '">' + (l.ok ? "ok" : esc(String(l.erro))) + "</span></div>").join("") + "</div>" + '<div class="acts"><button class="btn ghost" data-a="clearlog">Limpar diário</button></div>' : '<p class="small muted">Nada registrado ainda.</p>') + "</div>";
+  h += '<div class="card"><h2>Diário técnico</h2><p class="small muted">As últimas coisas que a IA fez neste aparelho. Serve para entender por que algo demorou ou falhou.</p>' +
+    (LOG.length
+      ? '<div style="max-height:300px;overflow:auto;margin-top:8px">' + LOG.map(l => '<div class="row between" style="padding:6px 0;border-bottom:1.5px dashed var(--line);gap:8px"><span class="grow small"><b>' + esc(l.tarefa) + '</b> <span class="muted">' + esc(l.ia) + " · " + esc(String(l.modelo || "")) + '</span><br><span class="muted" style="font-size:.8rem">' + esc(l.hora) + " · " + esc(String(l.seg)) + "s · entrada " + esc(String(l.entrada)) + " car." + (l.fotos ? " · " + esc(String(l.fotos)) + " foto(s)" : "") + (l.ok ? " · saída " + esc(String(l.saida)) + " car." : "") + '</span></span><span class="tag ' + (l.ok ? "ok" : "bad") + '">' + (l.ok ? "ok" : esc(String(l.erro))) + "</span></div>").join("") + "</div>" + '<div class="acts"><button class="btn ghost" data-a="clearlog">Limpar diário</button></div>'
+      : '<p class="small muted">Nada registrado ainda.</p>') + "</div>";
+  h += '<div class="note"><p class="small">Procurando a cópia de segurança ou o código da turma? Estão em <b>Pais › Compartilhar</b>.</p></div>';
   return h;
 }
 function vDiag() {
@@ -1234,19 +1269,17 @@ function vDiag() {
     '<p class="small muted">Os passos s\u00e3o escritos pela IA a partir das p\u00e1ginas indicadas acima. Se ela citou um intervalo menor que o do comunicado, foi ela que dividiu o conte\u00fado \u2014 confira se todas as p\u00e1ginas aparecem somando as sess\u00f5es.</p>' +
     (ss.length ? '<div class="btns"><button class="btn" data-a="planone" data-id="' + e.id + '">Refazer o roteiro desta prova</button></div>' : "") + "</div>";
   return h;
-}
-function vPages() {
+}function vPages() {
   const e = examOf(ui.arg); if (!e) { ui.screen = null; return vProvas(); }
   return '<button class="link" data-a="back">\u2039 Voltar</button><h1>P\u00e1ginas de ' + esc(e.subject) + '</h1><p class="muted">Tire uma foto por p\u00e1gina, na ordem. Elas se juntam aqui e s\u00e3o lidas todas de uma vez.</p>' +
     '<div class="card">' + (ui.files.length ? "<h3>" + ui.files.length + ' p\u00e1gina(s) na fila</h3><div style="max-height:260px;overflow:auto">' + ui.files.map((f, i) => '<div class="row between" style="padding:6px 0;border-bottom:1.5px dashed var(--line)"><span class="grow small" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (i + 1) + ". " + (isPdf(f) ? "\ud83d\udcd5 " : isDocx(f) ? "\ud83d\udcd8 " : "\ud83d\uddbc\ufe0f ") + esc(f.name || "foto") + '</span><button class="link" data-a="rmfile" data-i="' + i + '">tirar</button></div>').join("") + "</div>" : '<p class="muted small">Nenhuma p\u00e1gina na fila ainda.</p>') +
     '<div class="btns"><button class="btn pri block" data-a="pagecam">\ud83d\udcf7 Tirar foto da p\u00e1gina</button><button class="btn block" data-a="pagefile">\ud83d\uddbc\ufe0f Escolher do aparelho</button></div>' +
     (ui.files.length ? '<div class="btns"><button class="btn pri block" data-a="pagesgo">Ler as ' + ui.files.length + ' p\u00e1gina(s)</button></div>' : "") + "</div>" +
     '<p class="small muted">As fotos s\u00e3o lidas pelo Gemini e n\u00e3o ficam guardadas: o app salva s\u00f3 o texto, neste aparelho. Se puder, corte da foto o nome completo da crian\u00e7a.</p>';
-}
-function render() {
+}function render() {
   aplicaModo();
   const k = kid(); let h;
-  if (ui.screen && /^(pprovas|pprog|pajustes|pia|pavancado|examdet)$/.test(ui.screen) && (ui.tab !== "pais" || locked())) ui.screen = null;
+  if (ui.screen && /^(pprovas|pprog|pajustes|pia|pavancado|pcompartilhar|examdet)$/.test(ui.screen) && (ui.tab !== "pais" || locked())) ui.screen = null;
   if (!k || ui.screen === "welcome") h = vWelcome();
   else if (ui.screen === "notice") h = vNotice();
   else if (ui.screen === "exam") h = vExamForm();
@@ -1261,6 +1294,7 @@ function render() {
   else if (ui.screen === "pajustes") h = vPAjustes();
   else if (ui.screen === "pia") h = vPIA();
   else if (ui.screen === "pavancado") h = vPAvancado();
+  else if (ui.screen === "pcompartilhar") h = vPCompartilhar();
   else if (ui.screen === "examdet") h = vExamDet();
   else if (ui.tab === "pais") h = locked() ? vLock() : vPais();
   else h = vHoje();
@@ -1270,7 +1304,6 @@ function render() {
   $("#app").innerHTML = h;
 }
 function keepForm() { document.querySelectorAll("#app input[id],#app textarea[id],#app select[id]").forEach(el => { const m = { kname: "name", kgrade: "grade", kpace: "pace", wio: "wio", ntext: "ntext", esub: "subject", edate: "date", etop: "topics", epag: "pages", elinks: "links", ptext: "ptext", msis: "msis", mvol: "mvol", medi: "medi" }[el.id]; if (m) ui.form[m] = el.value; }); }
-
 /* ============ ações ============ */
 const A = {
   tab(d) { ui.tab = d.t; ui.screen = null; ui.form = {}; if (d.t !== "pais") ui.riddle = null; },
@@ -1335,6 +1368,7 @@ const A = {
   pajustes() { ui.screen = "pajustes"; window.scrollTo(0, 0); },
   pia() { ui.screen = "pia"; window.scrollTo(0, 0); },
   pavancado() { ui.screen = "pavancado"; ui.form = {}; window.scrollTo(0, 0); },
+  pcompartilhar() { ui.screen = "pcompartilhar"; ui.form = {}; window.scrollTo(0, 0); },
   ppais() { ui.screen = null; ui.form = {}; window.scrollTo(0, 0); },
   examdet(d) { ui.arg = d.id; ui.screen = "examdet"; window.scrollTo(0, 0); },
   async iocopy() { copiar(await zipar(JSON.stringify(S)), "Código copiado! Mande para você mesma e cole no outro aparelho."); },

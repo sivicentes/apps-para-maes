@@ -402,7 +402,8 @@ console.log("\n10. roteiro como lista livre (sem dia fixo)");
   const c = w.coverage(ex);
   eq(c.want, 34, "cobertura sabe quantas páginas o comunicado pede");
   eq(c.got, 2, "cobertura sabe quantas entraram");
-  eq(c.falta, 32, "cobertura calcula o buraco");
+  eq(c.falta.length, 32, "cobertura sabe quantas páginas faltam");
+  eq(c.texto, "122 a 153", "e diz quais faltam, em intervalo legível");
 
   // a tela Hoje mostra tudo junto, com progresso
   t.ui.tab = "hoje"; t.ui.screen = null; w.render();
@@ -419,10 +420,11 @@ console.log("\n10. roteiro como lista livre (sem dia fixo)");
 
   // aviso de cobertura no cartao da prova
   t.ui.tab = "pais"; t.ui.unlocked = true; t.ui.screen = "pprovas"; w.render();
-  ok(w.document.getElementById("app").innerHTML.includes("falta página"), "a ficha da prova marca que falta material");
+  ok(w.document.getElementById("app").innerHTML.includes("falta p. 122"), "a ficha da prova diz a partir de que página falta");
   t.ui.arg = ex.id; t.ui.screen = "examdet"; w.render();
   const det = w.document.getElementById("app").innerHTML;
-  ok(det.includes("só 2 entrou"), "a tela da prova explica o que falta");
+  ok(det.includes("Falta o material"), "a tela da prova explica o que falta");
+  ok(det.includes("122 a 153"), "nomeando as páginas");
   ok(det.includes("Material de estudo") && det.includes("Roteiro"), "a tela da prova reúne as ações num lugar só");
 }
 
@@ -462,7 +464,8 @@ console.log("\n12. área dos pais trancada");
   ok(html.includes("Provas e material"), "o hub lista Provas e material");
   ok(html.includes("Como Lulu está indo"), "o hub lista o progresso");
   ok(html.includes("Inteligência artificial"), "o hub lista as IAs");
-  ok((html.match(/class="hub/g) || []).length === 5, "o hub tem cinco fichas, nada de rolagem infinita");
+  ok((html.match(/class="hub/g) || []).length === 6, "o hub tem seis fichas, nada de rolagem infinita");
+  ok(html.includes("Compartilhar"), "o hub tem a ficha de compartilhar");
   ok(html.includes("falta ligar"), "a ficha da IA mostra o estado sem precisar entrar");
   t.ui.screen = "pavancado"; w.render();
   html = w.document.getElementById("app").innerHTML;
@@ -834,6 +837,46 @@ console.log("\n19. a mãe da turma, do zero, sem chave");
   ok(html.includes("Leia a página 120."), "os passos concretos chegaram");
   ok(html.includes("Explica pra mim"), "o botão de explicação existe");
   ok(html.includes("Começar o quiz"), "e o do quiz também");
+}
+
+/* ================= 20. foto com duas páginas ================= */
+console.log("\n20. foto com duas páginas numa só");
+{
+  const { w, t } = await boot([]);
+  t.ui.form = { name: "Benja", grade: "4º ano" }; t.A.savekid();
+  const k = t.S.kids[0];
+  const ex = { id: "e1", subject: "Ciências", date: "2099-12-10", topics: "", pages: "120 a 123", links: [], content: "", blocks: [], material: null, nPages: 0, misses: [], asked: [] };
+  k.exams.push(ex);
+
+  // conjunto de páginas entende intervalos, listas e o formato de página dupla
+  eq([...w.pageSet("120 a 123")].join(","), "120,121,122,123", "intervalo vira todas as páginas");
+  eq([...w.pageSet("120-121")].join(","), "120,121", "foto de duas páginas conta as duas");
+  eq([...w.pageSet("12, 15 e 18")].join(","), "12,15,18", "páginas soltas");
+  eq([...w.pageSet("120 a 123 e 130; 132 a 134")].sort((a, b) => a - b).join(","), "120,121,122,123,130,132,133,134", "o formato real do comunicado da escola");
+
+  // duas fotos, cada uma com duas páginas, cobrem as quatro
+  w.addBlocks(ex, null, [
+    { materia: "Ciências", assunto: "o Sol", pagina: "120-121", conceitos: [], conteudo: "O Sol é uma estrela." },
+    { materia: "Ciências", assunto: "os planetas", pagina: "122-123", conceitos: [], conteudo: "São oito planetas." },
+  ]);
+  eq(w.coverage(ex), null, "duas fotos de duas páginas cobrem as quatro: nenhum aviso falso");
+
+  // agora falta mesmo
+  const ex2 = { id: "e2", subject: "História", date: "2099-12-11", topics: "", pages: "8 a 10; 14", links: [], content: "", blocks: [], material: null, nPages: 0, misses: [], asked: [] };
+  k.exams.push(ex2);
+  w.addBlocks(ex2, null, [{ materia: "História", assunto: "vilas", pagina: "8-9", conceitos: [], conteudo: "As vilas coloniais." }]);
+  const c2 = w.coverage(ex2);
+  ok(c2, "aviso aparece quando falta de verdade");
+  eq(c2.texto, "10, 14", "e nomeia exatamente as que faltam");
+  eq(c2.got, 2, "contando certo o que entrou");
+
+  // intervalos longos viram faixa legível
+  eq(w.faixas([135, 136, 137, 141, 146, 147]), "135 a 137, 141, 146 a 147", "números soltos viram faixas legíveis");
+
+  // o prompt avisa a IA sobre foto de duas páginas
+  const pr = w.pagesPromptJSON(ex, "");
+  ok(pr.includes("DUAS páginas"), "o prompt avisa que uma foto pode ter duas páginas");
+  ok(pr.includes("120-121"), "e mostra o formato de página dupla");
 }
 
 console.log(`\n${passed} passaram, ${failed} falharam`);

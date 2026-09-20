@@ -132,7 +132,7 @@ O app **oferece**, não manda. Todo o estudo de cada prova aparece de uma vez, e
 - Se a prova tem link indicado pela professora, a primeira parte inclui um passo para assistir ou acessar.
 - Refazer o roteiro nunca apaga o que a criança já concluiu.
 - Se a IA falhar ou estiver desligada, o app monta um roteiro simples por conta própria, respeitando o mesmo ritmo.
-- O roteiro só fala do material que foi realmente enviado. Quando o comunicado pede mais páginas do que entraram no app, o cartão da prova avisa, para a mãe não descobrir isso depois da prova.
+- O roteiro só fala do material que foi realmente enviado. Quando o comunicado pede páginas que não entraram no app, a prova avisa **dizendo quais páginas faltam**, não só quantas. Uma foto pode trazer duas páginas (livro aberto): a IA é instruída a tratar cada página separadamente, e a contagem é por número de página, nunca por número de fotos.
 
 ## 7. Regras do quiz e da explicação
 
