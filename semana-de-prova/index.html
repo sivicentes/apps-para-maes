@@ -144,6 +144,7 @@ ul.plain{margin:.3em 0;padding-left:1.2em}
 <div id="app"></div>
 <div id="toast" class="toast" role="status" hidden></div>
 <input type="file" id="file" accept="image/*,application/pdf,.pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple hidden>
+<input type="file" id="cam" accept="image/*" capture="environment" hidden>
 
 <script>
 "use strict";
@@ -223,20 +224,30 @@ function parseLoose(t) {
   const a = t.search(/[{\[]/), z = Math.max(t.lastIndexOf("}"), t.lastIndexOf("]")); if (a >= 0 && z > a) { try { return JSON.parse(t.slice(a, z + 1)); } catch (e) {} }
   throw { code: "invalid_json", text: t };
 }
-async function gemini(prompt, o, wantJson) {
+async function geminiRaw(prompt, o, wantJson) {
   const parts = []; if (o.video) parts.push({ file_data: { file_uri: o.video } });
   const imgs = o.images ? (Array.isArray(o.images) ? o.images : [o.images]) : [];
   for (const im of imgs) parts.push({ inline_data: { mime_type: im.type || "image/jpeg", data: await b64(im) } });
   parts.push({ text: prompt });
-  const body = JSON.stringify({ contents: [{ role: "user", parts }], generationConfig: wantJson ? { responseMimeType: "application/json" } : {} });
+  const gcfg = m => {
+    const g = wantJson ? { responseMimeType: "application/json", maxOutputTokens: 8192 } : { maxOutputTokens: 4096 };
+    if (/^gemini-3/.test(m)) g.thinkingConfig = { thinkingLevel: "minimal" };
+    else if (/^gemini-2\.5/.test(m)) g.thinkingConfig = { thinkingBudget: 0 };
+    return g;
+  };
   const cands = [...new Set([G.model].concat(G.models || [], GDEFAULT).filter(Boolean))].slice(0, 4); let last = { code: "upstream_error" }, throttled = false;
   for (const m of cands) {
+    const body = JSON.stringify({ contents: [{ role: "user", parts }], generationConfig: gcfg(m) });
     let res; try { res = await fetch(GAPI + "models/" + m + ":generateContent", { method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": G.key }, body, signal: o.signal }); }
     catch (e) { throw { code: e && e.name === "AbortError" ? "cancelled" : "offline" }; }
     if (res.ok) {
       const d = await res.json(); const c = d.candidates && d.candidates[0];
       const text = ((c && c.content && c.content.parts) || []).filter(p => !p.thought).map(p => p.text || "").join("").trim();
-      if (!text) throw { code: (d.promptFeedback && d.promptFeedback.blockReason) || (c && /SAFETY|PROHIBITED|BLOCK/.test(c.finishReason || "")) ? "refused" : "empty_completion" };
+      const fin = (c && c.finishReason) || "";
+      if (!text || fin === "MAX_TOKENS") {
+        if (fin === "MAX_TOKENS") throw { code: "truncated" };
+        throw { code: (d.promptFeedback && d.promptFeedback.blockReason) || /SAFETY|PROHIBITED|BLOCK/.test(fin) ? "refused" : "empty_completion" };
+      }
       if (G.model !== m && !throttled) { G.model = m; saveG(); }
       return text;
     }
@@ -248,6 +259,30 @@ async function gemini(prompt, o, wantJson) {
   }
   throw last;
 }
+/* ============ diario tecnico: registra cada chamada de IA, para poder auditar ============ */
+const LKEY = "semana-de-prova:log";
+let LOG = (() => { try { return JSON.parse(localStorage.getItem(LKEY)) || []; } catch (e) { return []; } })();
+const saveLog = () => { try { LOG = LOG.slice(0, 40); localStorage.setItem(LKEY, JSON.stringify(LOG)); } catch (e) {} };
+function taskOf(p) {
+  p = String(p || "");
+  if (/comunicado de provas/.test(p)) return "comunicado";
+  if (/IDENTIFIQUE O MATERIAL|transcri\u00e7\u00e3o condensada/.test(p)) return "p\u00e1ginas";
+  if (/RESUMO DE ESTUDO/.test(p)) return "v\u00eddeo";
+  if (/Monte um roteiro/.test(p)) return "roteiro";
+  if (/m\u00faltipla escolha/.test(p)) return "quiz";
+  if (/Explique para uma crian\u00e7a/.test(p)) return "explica\u00e7\u00e3o";
+  return "outro";
+}
+const hhmm = () => { const d = new Date(); return pad(d.getHours()) + ":" + pad(d.getMinutes()); };
+function logAI(e) { LOG.unshift(Object.assign({ hora: hhmm() }, e)); saveLog(); }
+async function logged(ia, modelo, prompt, o, run) {
+  const t0 = Date.now(), tarefa = taskOf(prompt), fotos = (o && o.images ? (Array.isArray(o.images) ? o.images.length : 1) : 0) + (o && o.video ? 1 : 0);
+  const base = { ia, tarefa, entrada: prompt.length, fotos };
+  try { const r = await run(); logAI(Object.assign({ ok: true, modelo: modelo(), seg: ((Date.now() - t0) / 1000).toFixed(1), saida: String(r).length }, base)); return r; }
+  catch (e) { logAI(Object.assign({ ok: false, modelo: modelo(), seg: ((Date.now() - t0) / 1000).toFixed(1), erro: (e && e.code) || "?", detalhe: String((e && e.message) || "").slice(0, 180) }, base)); throw e; }
+}
+async function gemini(prompt, o, wantJson) { return logged("Gemini", () => G.model || (G.models || [])[0] || "?", prompt, o, () => geminiRaw(prompt, o, wantJson)); }
+async function groq(prompt, o, wantJson) { return logged("Groq", () => R.model || (R.models || [])[0] || "?", prompt, o, () => groqRaw(prompt, o, wantJson)); }
 function makeSample() {
   const f = async (prompt, o = {}) => { const text = await gemini(prompt, o, false); if (o.onText) o.onText({ text, delta: text }); return { text, truncated: false }; };
   f.json = async (prompt, o = {}) => parseLoose(await gemini(prompt, o, true));
@@ -255,6 +290,48 @@ function makeSample() {
   return f;
 }
 sample = G.key ? makeSample() : null; limits = { images: { maxCount: 6 } }; aiChecked = true;
+/* ============ IA 2: Groq (so texto, rapido; chave separada, fora do backup) ============ */
+const RKEY = "semana-de-prova:groq";
+const RAPI = "https://api.groq.com/openai/v1/";
+const RDEFAULT = ["llama-3.3-70b-versatile", "openai/gpt-oss-120b", "qwen/qwen3-32b", "llama-3.1-8b-instant"];
+let R = (() => { try { return JSON.parse(localStorage.getItem(RKEY)) || {}; } catch (e) { return {}; } })();
+const saveR = () => { try { localStorage.setItem(RKEY, JSON.stringify(R)); } catch (e) {} };
+function rankGroq(list) {
+  const names = (list || []).map(m => String((m && m.id) || "")).filter(Boolean);
+  const pref = RDEFAULT.filter(n => names.includes(n));
+  return pref.length ? pref : names.filter(n => /llama|gpt-oss|qwen|kimi/i.test(n) && !/whisper|guard|tts|vision/i.test(n)).slice(0, 4);
+}
+async function connectGroq(key) {
+  let res; try { res = await fetch(RAPI + "models", { headers: { Authorization: "Bearer " + key } }); } catch (e) { throw { code: "blocked" }; }
+  if (!res.ok) { const e2 = await res.json().catch(() => ({})); throw { code: res.status === 429 ? "rate_limited" : "bad_key2", message: "erro " + res.status + ": " + (((e2.error && e2.error.message) || "sem detalhe")).slice(0, 140) }; }
+  const models = rankGroq(((await res.json()) || {}).data);
+  if (!models.length) throw { code: "bad_key2", message: "nenhum modelo de texto disponivel nesta chave" };
+  R = { key, models, model: null }; saveR();
+}
+async function groqRaw(prompt, o, wantJson) {
+  const cands = [...new Set([R.model].concat(R.models || [], RDEFAULT).filter(Boolean))].slice(0, 4); let last = { code: "upstream_error" };
+  for (const m of cands) {
+    const body = JSON.stringify(Object.assign({ messages: [{ role: "user", content: prompt }], model: m, max_completion_tokens: wantJson ? 8192 : 4096 }, wantJson ? { response_format: { type: "json_object" } } : {}));
+    let res; try { res = await fetch(RAPI + "chat/completions", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + R.key }, body, signal: o.signal }); }
+    catch (e) { throw { code: e && e.name === "AbortError" ? "cancelled" : "offline" }; }
+    if (res.ok) {
+      const d = await res.json(); const c = (d.choices || [])[0];
+      const text = String((c && c.message && c.message.content) || "").trim();
+      if (c && c.finish_reason === "length") throw { code: "truncated" };
+      if (!text) throw { code: "empty_completion" };
+      if (R.model !== m) { R.model = m; saveR(); }
+      return text;
+    }
+    const err = await res.json().catch(() => ({})); const msg = (err.error && err.error.message) || "";
+    if (res.status === 401 || res.status === 403) throw { code: "bad_key2", message: msg.slice(0, 140) };
+    if (res.status === 429) { last = { code: "rate_limited" }; continue; }
+    last = { code: "upstream_error", message: msg };
+  }
+  throw last;
+}
+/* Groq nao enxerga: foto, PDF e video continuam sempre no Gemini. */
+const useFast = o => !!R.key && !o.images && !o.video;
+
 const canImages = () => !!sample;
 const imgMax = () => (limits && limits.images && limits.images.maxCount) || 3;
 const ERR = {
@@ -267,14 +344,26 @@ const ERR = {
   prompt_too_large: "Material grande demais para ler de uma vez. Envie menos páginas por vez.",
   refused: "A IA não pôde responder a esse material. Tente com outras fotos.",
   video_failed: "Não consegui assistir a esse vídeo. Ele precisa ser público no YouTube (privado ou não listado não funciona).",
+  truncated: "A resposta veio pela metade: o material desta prova é grande demais para uma vez só. Tente de novo; se repetir, divida o material em partes.",
+  empty_completion: "A IA respondeu em branco. Espere alguns segundos e tente de novo.",
+  invalid_json: "A IA respondeu fora do formato esperado. Tente de novo.",
+  bad_key2: "A chave do Groq nao foi aceita. Confira em Pais se ela foi colada inteira.",
 };
 const errMsg = e => ((e && ERR[e.code]) || "Não deu certo desta vez. Tente de novo.") + (e && e.code === "bad_key" && e.message ? " (" + e.message + ")" : "");
 function confirmBox(msg, yes, label) { ui.confirm = { msg, yes, label }; }
 function busy(msg, sub) { ui.busy = { msg, sub: sub || "" }; render(); }
 function idle() { ui.busy = null; ctl = null; render(); }
 function toast(t) { const el = $("#toast"); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { el.hidden = true; }, Math.max(4200, String(t).length * 70)); }
-async function askText(prompt, opts = {}) { ctl = new AbortController(); const r = await sample(prompt, { signal: ctl.signal, ...opts }); return r.text; }
-async function askJSON(prompt, opts = {}) { ctl = new AbortController(); return await sample.json(prompt, { signal: ctl.signal, ...opts }); }
+async function askText(prompt, opts = {}) {
+  ctl = new AbortController(); const o = { signal: ctl.signal, ...opts };
+  if (useFast(o)) { try { return await groq(prompt, o, false); } catch (e) { if (e.code === "cancelled") throw e; } }
+  const r = await sample(prompt, o); return r.text;
+}
+async function askJSON(prompt, opts = {}) {
+  ctl = new AbortController(); const o = { signal: ctl.signal, ...opts };
+  if (useFast(o)) { try { return parseLoose(await groq(prompt, o, true)); } catch (e) { if (e.code === "cancelled") throw e; } }
+  return await sample.json(prompt, o);
+}
 
 /* ============ arquivos: fotos e PDF ============ */
 async function shrink(file) {
@@ -335,8 +424,8 @@ async function gather(files) {
   }
   return { text: text.trim(), images, failed };
 }
-function pickFiles() {
-  return new Promise(res => { const inp = $("#file"); inp.value = ""; inp.onchange = () => res(Array.from(inp.files || [])); inp.click(); });
+function pickFiles(cam) {
+  return new Promise(res => { const inp = $(cam ? "#cam" : "#file"); inp.value = ""; inp.onchange = () => res(Array.from(inp.files || [])); inp.click(); });
 }
 
 /* ============ 1. ler o comunicado ============ */
@@ -372,7 +461,7 @@ async function readNotice(files, pasted) {
       const date = validD(p.data) ? p.data : "";
       const dup = k.exams.find(e => e.subject.toLowerCase() === String(p.materia).toLowerCase() && e.date === date);
       if (dup) { const nl = aiLinks(p).filter(l => !linksOf(dup).some(x => x.url === l.url)); if (nl.length) { dup.links = linksOf(dup).concat(nl).slice(0, 8); merged++; } continue; }
-      k.exams.push({ id: uid(), subject: String(p.materia).slice(0, 60), date, topics: String(p.conteudo || "").slice(0, 800), pages: String(p.paginas || "").slice(0, 300), links: aiLinks(p), content: "", nPages: 0, misses: [], asked: [] });
+      k.exams.push({ id: uid(), subject: String(p.materia).slice(0, 60), date, topics: String(p.conteudo || "").slice(0, 800), pages: String(p.paginas || "").slice(0, 300), links: aiLinks(p), content: "", blocks: [], material: null, nPages: 0, misses: [], asked: [] });
       added++;
     }
     k.exams.sort((a, b) => (a.date || "9").localeCompare(b.date || "9")); save(); ui.screen = null; ui.files = []; ui.form = {}; idle();
@@ -381,35 +470,87 @@ async function readNotice(files, pasted) {
   } catch (e) { idle(); if (e.code !== "cancelled") toast(errMsg(e)); }
 }
 
-/* ============ 2. ler as páginas de estudo ============ */
+/* ============ 2. ler as paginas de estudo ============ */
+/* O conteudo passa a ser guardado em BLOCOS por assunto, com a identificacao do
+   material (sistema/volume/edicao) e a pagina apenas como referencia. ex.content
+   vira derivado dos blocos, para tudo que ja existia continuar funcionando. */
+const normTxt = t => String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+function hash32(t) { const n = normTxt(t); let h = 5381; for (let i = 0; i < n.length; i++) h = ((h << 5) + h + n.charCodeAt(i)) | 0; return (h >>> 0).toString(36); }
+const cutStr = (v, n) => String(v == null ? "" : v).trim().slice(0, n);
+const MATF = ["sistema", "volume", "edicao", "serie"];
+function seedBlocks(ex) {
+  if (Array.isArray(ex.blocks)) return;
+  ex.blocks = ex.content ? [{ materia: ex.subject, assunto: "", pagina: "", conceitos: [], texto: ex.content, hash: hash32(ex.content) }] : [];
+}
+function deriveContent(ex) {
+  ex.content = ex.blocks.map(b => (b.assunto ? b.assunto + (b.pagina ? " (p. " + b.pagina + ")" : "") + "\n" : "") + b.texto).join("\n\n").slice(0, MAX_CONTENT);
+}
+function addBlocks(ex, material, blocks) {
+  seedBlocks(ex);
+  if (material) { ex.material = ex.material || { sistema: "", volume: "", edicao: "", serie: "" }; MATF.forEach(k => { if (!ex.material[k] && material[k]) ex.material[k] = cutStr(material[k], 60); }); }
+  let added = 0, unreadable = 0;
+  for (const b of blocks || []) {
+    const texto = cutStr(b && b.conteudo, 6000); if (!texto) continue;
+    const assunto = cutStr(b.assunto, 120);
+    if (/ILEG[I\u00cd]VEL/i.test(assunto) || /ILEG[I\u00cd]VEL/i.test(texto)) { unreadable++; continue; }
+    const h = hash32(texto); if (ex.blocks.some(x => x.hash === h)) continue;
+    ex.blocks.push({ materia: cutStr(b.materia || ex.subject, 60), assunto, pagina: cutStr(b.pagina, 12), conceitos: (Array.isArray(b.conceitos) ? b.conceitos : []).map(c => cutStr(c, 60)).filter(Boolean).slice(0, 12), texto, hash: h });
+    added++;
+  }
+  deriveContent(ex); return { added, unreadable };
+}
+function cov(ex) { try { return coverage(ex); } catch (e) { return null; } }
+function matLabel(ex) { const m = ex && ex.material; if (!m) return ""; return MATF.map(k => m[k]).filter(Boolean).join(" \u00b7 "); }
+function addText(ex, titulo, texto) { return addBlocks(ex, null, [{ materia: ex.subject, assunto: titulo, pagina: "", conceitos: [], conteudo: texto }]); }
+
 function pagesPrompt(ex, extraText) {
   return "As imagens (e/ou o texto abaixo) são páginas do material de estudo de " + ex.subject + ", de um aluno do " + kid().grade + " no Brasil, para uma prova sobre: " + (ex.topics || "(assunto não informado)") + ".\n" +
     "Faça uma transcrição condensada e FIEL de tudo que é conteúdo de estudo: conceitos, definições, regras, exemplos resolvidos, fórmulas, datas, nomes, vocabulário, e descreva em uma frase mapas, gráficos ou figuras importantes. Ignore enfeites e instruções de atividade sem conteúdo.\n" +
     "Não acrescente nada que não esteja nas páginas. Texto simples, sem markdown, com um subtítulo por página (\"Página 42\" se o número aparecer). Se uma foto estiver ilegível, escreva FOTO ILEGÍVEL no lugar dela." +
     (extraText ? "\n\nTEXTO:\n" + extraText.slice(0, 40000) : "");
 }
-async function readPages(examId) {
+function pagesPromptJSON(ex, extraText) {
+  return "As imagens (e/ou o texto abaixo) s\u00e3o p\u00e1ginas do material de estudo de " + ex.subject + ", de um aluno do " + kid().grade + " no Brasil, para uma prova sobre: " + (ex.topics || "(assunto n\u00e3o informado)") + ".\n" +
+    "1) IDENTIFIQUE O MATERIAL pelo que estiver impresso na p\u00e1gina (capa, cabe\u00e7alho, rodap\u00e9): sistema ou editora (Objetivo, Anglo, Poliedro, SAS, \u00c1tica, Moderna, FTD...), volume ou caderno, edi\u00e7\u00e3o ou ano, e o n\u00famero impresso da p\u00e1gina. Use \"\" no que n\u00e3o estiver vis\u00edvel. N\u00c3O adivinhe nem deduza.\n" +
+    "2) DIVIDA O CONTE\u00daDO EM BLOCOS, um por assunto. Cada bloco traz uma transcri\u00e7\u00e3o condensada e FIEL: conceitos, defini\u00e7\u00f5es, regras, exemplos resolvidos, f\u00f3rmulas, datas, nomes, vocabul\u00e1rio, e uma frase descrevendo mapas, gr\u00e1ficos ou figuras importantes. Ignore enfeites e instru\u00e7\u00f5es de atividade sem conte\u00fado. N\u00e3o acrescente nada que n\u00e3o esteja nas p\u00e1ginas.\n" +
+    "Em \"conceitos\" liste as palavras-chave daquele bloco. Se uma foto estiver ileg\u00edvel, use um bloco com assunto \"FOTO ILEG\u00cdVEL\".\n" +
+    "Responda SOMENTE com JSON: {\"material\":{\"sistema\":\"\",\"volume\":\"\",\"edicao\":\"\",\"serie\":\"\"},\"blocos\":[{\"materia\":\"\",\"assunto\":\"\",\"pagina\":\"\",\"conceitos\":[\"\"],\"conteudo\":\"\"}]}" +
+    (extraText ? "\n\nTEXTO:\n" + extraText.slice(0, 40000) : "");
+}
+/* tenta o formato estruturado; se falhar, cai no texto corrido de antes (sem regressao) */
+async function readChunk(ex, extraText, images) {
+  const opts = images && images.length ? { images } : {};
+  try {
+    const r = await askJSON(pagesPromptJSON(ex, extraText), opts);
+    const blocos = r && Array.isArray(r.blocos) ? r.blocos.filter(b => b && b.conteudo) : [];
+    if (!blocos.length) throw { code: "invalid_json" };
+    return { material: (r && r.material) || null, blocos };
+  } catch (e) {
+    if (e.code === "cancelled") throw e;
+    const t = await askText(pagesPrompt(ex, extraText), opts);
+    return { material: null, blocos: [{ materia: ex.subject, assunto: "", pagina: "", conceitos: [], conteudo: t }] };
+  }
+}
+async function readPages(examId, files) {
   const ex = examOf(examId); if (!ex) return;
   if (!sample) return toast("Para ler as páginas, ligue a IA na aba Pais.");
-  const files = await pickFiles(); if (!files.length) return;
+  if (!files || !files.length) return toast("Nenhuma página para ler.");
   busy("Preparando as páginas…");
   try {
     const g = await gather(files);
     if (g.images.length && !canImages()) { idle(); return toast(ERR.images_unavailable); }
     if (!g.text && !g.images.length) { idle(); return toast(g.failed.length ? "Não consegui abrir: " + g.failed.join(", ") + ". Envie fotos das páginas." : "Nenhuma página para ler."); }
-    let out = "", count = 0, unreadable = 0;
-    if (g.text) { busy("Lendo o material…"); out += (g.text.length > 5000 ? await askText(pagesPrompt(ex, g.text)) : g.text) + "\n"; count += (g.text.match(/\[Página/g) || [1]).length; }
+    let count = 0, unreadable = 0, added = 0;
+    if (g.text) { busy("Lendo o material\u2026"); const r = await readChunk(ex, g.text, null); const a = addBlocks(ex, r.material, r.blocos); added += a.added; unreadable += a.unreadable; count += (g.text.match(/\[P\u00e1gina/g) || [1]).length; }
     const per = Math.min(3, Math.max(1, imgMax()));
     for (let i = 0; i < g.images.length; i += per) {
       const part = g.images.slice(i, i + per);
-      busy("Lendo as páginas de " + ex.subject + "…", "Página " + (i + 1) + (part.length > 1 ? " a " + (i + part.length) : "") + " de " + g.images.length);
-      const t = await askText(pagesPrompt(ex, ""), { images: part });
-      unreadable += (t.match(/FOTO ILEG[IÍ]VEL/gi) || []).length; out += t + "\n\n"; count += part.length;
+      busy("Lendo as p\u00e1ginas de " + ex.subject + "\u2026", "P\u00e1gina " + (i + 1) + (part.length > 1 ? " a " + (i + part.length) : "") + " de " + g.images.length);
+      const r = await readChunk(ex, "", part); const a = addBlocks(ex, r.material, r.blocos); added += a.added; unreadable += a.unreadable; count += part.length;
     }
-    ex.content = (ex.content ? ex.content + "\n\n" : "") + out.trim(); let cut = false;
-    if (ex.content.length > MAX_CONTENT) { ex.content = ex.content.slice(0, MAX_CONTENT); cut = true; }
-    ex.nPages = (ex.nPages || 0) + count; save(); idle();
-    toast(unreadable ? unreadable + " foto(s) ficaram ilegíveis. Tire de novo, com luz e sem cortar a página." : cut ? "Material bem grande: guardei a parte principal." : count + " página(s) lidas!");
+    ex.nPages = (ex.nPages || 0) + count; ui.files = []; ui.screen = null; save(); idle();
+    const mat = matLabel(ex);
+    toast(unreadable ? unreadable + " foto(s) ficaram ileg\u00edveis. Tire de novo, com luz e sem cortar a p\u00e1gina." : !added ? "Esse material j\u00e1 estava guardado." : count + " p\u00e1gina(s) lidas!" + (mat ? " Material: " + mat + "." : ""));
   } catch (e) { idle(); if (e.code !== "cancelled") toast(errMsg(e)); }
 }
 
@@ -423,61 +564,132 @@ async function readVideo(examId, url) {
       "Assista ao vídeo inteiro (imagem e áudio) e escreva um RESUMO DE ESTUDO fiel, em português, em texto simples sem markdown: 1) tema do vídeo em uma frase; 2) o que é ensinado, em tópicos; 3) se for aula de idioma, a lista de palavras e frases ensinadas, cada uma com a tradução, incluindo o que aparece escrito na tela; 4) exemplos e perguntas e respostas que aparecem. Se for música, não transcreva a letra inteira: liste o vocabulário e as estruturas que ela ensina. Não invente nada que não esteja no vídeo.",
       { video: "https://www.youtube.com/watch?v=" + id });
     const l = linksOf(ex).find(x => x.url === url); if (l) l.read = true;
-    ex.content = ((ex.content ? ex.content + "\n\n" : "") + "VÍDEO INDICADO PELA PROFESSORA" + (l && l.label ? " (" + l.label + ")" : "") + ":\n" + t.trim()).slice(0, MAX_CONTENT);
+    addText(ex, "V\u00cdDEO INDICADO PELA PROFESSORA" + (l && l.label ? " (" + l.label + ")" : ""), t.trim());
     ex.nPages = (ex.nPages || 0) + 1; save(); idle(); toast("Vídeo lido! Já vale para as explicações e os quizzes.");
   } catch (e) { idle(); if (e.code !== "cancelled") toast(errMsg(e)); }
 }
 
 /* ============ 3. roteiro ============ */
-function studyDays(fromS, toS) { const out = []; for (let d = fromS; d <= toS; d = addDays(d, 1)) { const w = parseD(d).getDay(); if (S.settings.weekends || (w !== 0 && w !== 6)) out.push(d); } return out; }
-function mkSession(ex, date, type, title, minutes, steps) {
-  return { id: uid(), examId: ex.id, date, type, title: String(title).slice(0, 90), minutes: Math.max(10, Math.min(60, Number(minutes) || 25)), steps: steps.slice(0, 5).map(t => ({ t: String(t).slice(0, 220), done: false })), done: false, explain: "", score: null };
+function chooseBox(msg, opts) { ui.confirm = { msg, opts }; }
+/* ============ ritmo de estudo (por crianca) ============ */
+/* Teto diario = quanto tempo a crianca tem por dia, somando as materias.
+   Ritmo = quanto conteudo cabe DENTRO de uma sessao. Sao coisas diferentes. */
+const PACE = {
+  calmo:  { label: "Calmo",  min: 15, max: 20, pags: 4,  dica: "Para quem precisa de mais tempo: peda\u00e7os pequenos e mais repeti\u00e7\u00e3o." },
+  normal: { label: "Normal", min: 20, max: 30, pags: 8,  dica: "O padr\u00e3o: sess\u00f5es de 20 a 30 minutos." },
+  puxado: { label: "Puxado", min: 25, max: 40, pags: 14, dica: "Para quem absorve r\u00e1pido: blocos maiores por sess\u00e3o." },
+};
+const PACEK = ["calmo", "normal", "puxado"];
+function paceOf(k) { k = k || kid(); const p = k && k.pace; return PACE[p] ? p : "normal"; }
+function paceRules(p) {
+  const P = PACE[p];
+  if (p === "calmo") return "RITMO CALMO: esta crian\u00e7a precisa de mais tempo para absorver. Sess\u00f5es de " + P.min + " a " + P.max + " minutos. Divida o conte\u00fado em MUITAS partes pequenas: cada sess\u00e3o cobre um peda\u00e7o curto, por volta de " + P.pags + " p\u00e1ginas ou um assunto s\u00f3. Prefira mais sess\u00f5es curtas a menos sess\u00f5es longas. De 3 a 4 passos por sess\u00e3o, e um deles sempre de repetir ou explicar em voz alta o que entendeu.";
+  if (p === "puxado") return "RITMO PUXADO: esta crian\u00e7a absorve r\u00e1pido. Sess\u00f5es de " + P.min + " a " + P.max + " minutos, cobrindo blocos maiores, por volta de " + P.pags + " p\u00e1ginas por sess\u00e3o. De 2 a 3 passos por sess\u00e3o, diretos.";
+  return "RITMO NORMAL: sess\u00f5es de " + P.min + " a " + P.max + " minutos, cobrindo por volta de " + P.pags + " p\u00e1ginas cada. De 2 a 4 passos por sess\u00e3o.";
 }
-function basicSessions(ex, t, load) {
-  const days = studyDays(t, addDays(ex.date, -1)); if (!days.length) return [];
-  const want = Math.min(days.length, ex.content.length > 6000 ? 3 : 2); const out = []; const eve = days[days.length - 1];
-  const where = ex.pages ? " (" + ex.pages + ")" : ""; const lk = linksOf(ex).length ? [(hasVideo(ex) ? "Assista ao vídeo" : "Acesse o link") + " que a professora indicou (botão no alto da tela)."] : [];
-  const pick = days.slice(0, -1).sort((a, b) => (load[a] || 0) - (load[b] || 0) || a.localeCompare(b)).slice(0, want - 1).sort();
-  pick.forEach((d, i) => { load[d] = (load[d] || 0) + 25; out.push(mkSession(ex, d, "estudo", ex.subject + ": estudar parte " + (i + 1), 25, (i === 0 ? lk : []).concat(["Leia com calma o material" + where + ".", "Escreva no caderno 3 coisas importantes que você leu.", "Explique em voz alta para alguém o que entendeu."]))); });
-  load[eve] = (load[eve] || 0) + 20;
-  out.push(mkSession(ex, eve, "revisao", ex.subject + ": revisão para a prova", 20, (pick.length ? [] : lk).concat(["Releia suas anotações e os títulos do material" + where + ".", "Refaça um exercício que você achou difícil.", "Faça o quiz de revisão."])));
+/* conta paginas a partir do que a professora escreveu: "120 a 153", "40-52", "12, 15 e 18" */
+function pageCount(pages) {
+  const s = String(pages || ""); let n = 0;
+  s.replace(/(\d{1,4})\s*(?:a|\u00e0|at\u00e9|-|\u2013|\u2014)\s*(\d{1,4})/gi, (m, a, b) => { const x = +a, y = +b; if (y >= x && y - x < 400) n += y - x + 1; return m; });
+  if (n) return n;
+  const nums = s.match(/\d{1,4}/g); return nums ? nums.length : 0;
+}
+/* estimativa grosseira de quanto cabe ate a prova, no ritmo escolhido */
+function fitCheck(ex, t, p) {
+  const days = studyDays(t, addDays(ex.date, -1)).length, pg = pageCount(ex.pages);
+  if (!days || !pg) return null;
+  const P = PACE[p], porDia = Math.max(1, Math.floor(S.settings.minutes / P.min));
+  const cabe = days * porDia * P.pags;
+  if (pg <= cabe * 1.2) return null;
+  return { subject: ex.subject, pg, days, cabe, msg: ex.subject + ": s\u00e3o cerca de " + pg + " p\u00e1ginas e " + (days === 1 ? "sobra 1 dia" : "sobram " + days + " dias") + " at\u00e9 a prova. No ritmo " + P.label.toLowerCase() + " cabem por volta de " + cabe + ". O que voc\u00ea prefere?" };
+}
+function startPlan(onlyId) {
+  const k = kid(), t = today(); onlyId = typeof onlyId === "string" ? onlyId : null;
+  const exams = k.exams.filter(e => validD(e.date) && e.date > t && (!onlyId || e.id === onlyId));
+  if (!exams.length) return makePlan(onlyId);
+  const p = paceOf();
+  const apertado = exams.map(e => fitCheck(e, t, p)).filter(Boolean);
+  if (apertado.length) {
+    const msg = apertado.length === 1 ? apertado[0].msg : apertado.length + " provas t\u00eam mais conte\u00fado do que cabe no ritmo " + PACE[p].label.toLowerCase() + " at\u00e9 a data delas. O que voc\u00ea prefere?";
+    return chooseBox(msg, [
+      { label: "Priorizar o mais importante", pri: true, fn: () => makePlan(onlyId, { priorizar: true }) },
+      { label: "Acelerar o ritmo s\u00f3 aqui", fn: () => makePlan(onlyId, { pace: "puxado" }) },
+      { label: "Montar assim mesmo", fn: () => makePlan(onlyId, {}) },
+    ]);
+  }
+  const faltando = exams.filter(e => !e.nPages).length;
+  if (faltando && sample) return confirmBox(faltando + " prova(s) ainda sem p\u00e1ginas enviadas. Montar o roteiro mesmo assim?", () => makePlan(onlyId), "Montar");
+  return makePlan(onlyId);
+}
+function studyDays(fromS, toS) { const out = []; for (let d = fromS; d <= toS; d = addDays(d, 1)) { const w = parseD(d).getDay(); if (S.settings.weekends || (w !== 0 && w !== 6)) out.push(d); } return out; }
+function mkSession(ex, date, type, title, minutes, steps, ord) {
+  return { id: uid(), examId: ex.id, date: date || null, ord: ord || 0, type, title: String(title).slice(0, 90), minutes: Math.max(10, Math.min(60, Number(minutes) || 25)), steps: steps.slice(0, 6).map(t => ({ t: String(t).slice(0, 220), done: false })), done: false, explain: "", score: null };
+}
+/* quanto do material pedido no comunicado realmente entrou no app */
+function coverage(ex) {
+  const want = pageCount(ex.pages); if (!want) return null;
+  seedBlocks(ex); const got = new Set();
+  ex.blocks.forEach(b => { const n = parseInt(b.pagina, 10); if (n) got.add(n); });
+  if (!got.size) return null;
+  return { want, got: got.size, falta: Math.max(0, want - got.size) };
+}
+function basicSessions(ex, pace) {
+  const P = PACE[pace] || PACE.normal, pg = pageCount(ex.pages);
+  const partes = Math.max(1, Math.min(6, pg ? Math.ceil(pg / P.pags) : (ex.content.length > 6000 ? 3 : 2)));
+  const where = ex.pages ? " (" + ex.pages + ")" : "";
+  const lk = linksOf(ex).length ? [(hasVideo(ex) ? "Assista ao v\u00eddeo" : "Acesse o link") + " que a professora indicou (bot\u00e3o no alto da tela)."] : [];
+  const out = [];
+  for (let i = 0; i < partes; i++) out.push(mkSession(ex, null, "estudo", ex.subject + ": parte " + (i + 1) + " de " + partes, P.min, (i === 0 ? lk : []).concat(["Leia com calma o material" + where + ".", "Escreva no caderno 3 coisas importantes que voc\u00ea leu.", "Explique em voz alta para algu\u00e9m o que entendeu."]), i + 1));
+  out.push(mkSession(ex, addDays(ex.date, -1), "revisao", ex.subject + ": revis\u00e3o para a prova", P.min, ["Releia suas anota\u00e7\u00f5es e os t\u00edtulos do material" + where + ".", "Refa\u00e7a um exerc\u00edcio que voc\u00ea achou dif\u00edcil.", "Fa\u00e7a o quiz de revis\u00e3o."], partes + 1));
   return out;
 }
-function planPrompt(exams, t, days, busyDays) {
-  return "Monte um roteiro de estudos para uma criança do " + kid().grade + " (Brasil) em semana de provas. Hoje é " + nice(t) + " (" + t + ").\n" +
-    "Dias em que ela pode estudar: " + days.map(d => d + " (" + WD[parseD(d).getDay()] + ")").join(", ") + ". No máximo " + S.settings.minutes + " minutos de estudo por dia, somando tudo.\n" +
-    (busyDays && Object.keys(busyDays).length ? "Minutos JÁ ocupados por outras matérias (desconte do limite do dia): " + Object.keys(busyDays).sort().map(d => d + ": " + busyDays[d] + " min").join(", ") + ".\n" : "") + "\nPROVAS:\n" +
-    exams.map(e => "- id " + e.id + " | " + e.subject + " | prova em " + e.date + " | cai: " + (e.topics || "não informado") + " | material: " + (e.pages || "não informado") + (linksOf(e).length ? " | a professora indicou " + linksOf(e).length + " link(s): " + linksOf(e).map(l => (isVideo(l.url) ? "vídeo" : "site") + (l.label ? " (" + l.label + ")" : "")).join(", ") : "") + (e.content ? " | trecho do material: " + e.content.slice(0, 1100).replace(/\s+/g, " ") : "")).join("\n") +
-    "\n\nREGRAS:\n1. Toda prova precisa de pelo menos 1 sessão antes do dia dela. Nunca marque sessão no dia da prova nem depois.\n2. Na véspera de cada prova marque uma sessão do tipo \"revisao\" dessa matéria. As outras são do tipo \"estudo\".\n3. Sessões de 15 a 30 minutos. Priorize a prova mais próxima; divida matérias com muito conteúdo em partes, cada parte com um foco diferente.\n4. Se o tempo do dia não der para tudo, encurte as sessões em vez de deixar uma prova sem estudo.\n5. Cada sessão tem de 2 a 4 passos concretos, começando com verbo, em linguagem simples para a idade, citando as páginas e os assuntos reais. Não inclua \"fazer o quiz\" como passo (o aplicativo já oferece).\n6. Se a prova tem link indicado pela professora, a PRIMEIRA sessão dela precisa ter um passo para assistir/acessar, dizendo que o botão do link está no alto da tela (não escreva o endereço). Reserve tempo para isso.\n7. O título diz a matéria e o foco, por exemplo \"Ciências: cadeia alimentar\".\n\n" +
-    'Responda SOMENTE com JSON: {"sessoes":[{"prova_id":"","data":"AAAA-MM-DD","tipo":"estudo","titulo":"","minutos":25,"passos":["",""]}]}';
+function planPrompt(exams, t, pace, opts) {
+  return "Monte um roteiro de estudos para uma crian\u00e7a do " + kid().grade + " (Brasil) em semana de provas. Hoje \u00e9 " + nice(t) + " (" + t + ").\n" +
+    "Divida o estudo de cada prova em PARTES numeradas, em ordem de estudo. N\u00c3O distribua as partes por dia e N\u00c3O cite datas: a crian\u00e7a escolhe quando fazer cada parte.\n" +
+    paceRules(pace) + "\n" +
+    (opts && opts.priorizar ? "ATEN\u00c7\u00c3O: h\u00e1 mais conte\u00fado do que tempo at\u00e9 a prova. Ordene come\u00e7ando pelo que tem mais chance de cair, e escreva \"(extra)\" no fim do t\u00edtulo das partes menos essenciais.\n" : "") + "\nPROVAS:\n" +
+    exams.map(e => "- id " + e.id + " | " + e.subject + " | prova em " + e.date + " | cai: " + (e.topics || "n\u00e3o informado") + " | material indicado: " + (e.pages || "n\u00e3o informado") + (linksOf(e).length ? " | a professora indicou " + linksOf(e).length + " link(s): " + linksOf(e).map(l => (isVideo(l.url) ? "v\u00eddeo" : "site") + (l.label ? " (" + l.label + ")" : "")).join(", ") : "") + (e.content ? " | trecho do material guardado: " + e.content.slice(0, 1100).replace(/\s+/g, " ") : " | ATEN\u00c7\u00c3O: o material ainda n\u00e3o foi enviado")).join("\n") +
+    "\n\nREGRAS:\n" +
+    "1. Cada prova vira de 2 a 8 partes, cobrindo TODO o material guardado, sem deixar assunto de fora e sem repetir conte\u00fado entre partes.\n" +
+    "2. A \u00daLTIMA parte de cada prova \u00e9 do tipo \"revisao\" e revisa a mat\u00e9ria inteira. Todas as outras s\u00e3o do tipo \"estudo\".\n" +
+    "3. Numere em \"ordem\" come\u00e7ando em 1, do mais b\u00e1sico ao mais avan\u00e7ado.\n" +
+    "4. Cada parte tem um foco diferente e cita as p\u00e1ginas e os assuntos reais daquela parte.\n" +
+    "5. Passos concretos come\u00e7ando com verbo, em linguagem simples para a idade. N\u00e3o inclua \"fazer o quiz\" como passo (o aplicativo j\u00e1 oferece).\n" +
+    "6. Se a prova tem link indicado pela professora, a PRIMEIRA parte precisa ter um passo para assistir ou acessar, dizendo que o bot\u00e3o do link est\u00e1 no alto da tela (n\u00e3o escreva o endere\u00e7o).\n" +
+    "7. O t\u00edtulo diz a mat\u00e9ria e o foco, por exemplo \"Ci\u00eancias: cadeia alimentar\".\n\n" +
+    "Responda SOMENTE com JSON: {\"sessoes\":[{\"prova_id\":\"\",\"ordem\":1,\"tipo\":\"estudo\",\"titulo\":\"\",\"minutos\":20,\"passos\":[\"\",\"\"]}]}";
 }
-async function makePlan(onlyId) {
-  const k = kid(); const t = today(); onlyId = typeof onlyId === "string" ? onlyId : null;
+async function makePlan(onlyId, opts) {
+  const k = kid(), t = today(); onlyId = typeof onlyId === "string" ? onlyId : null; opts = opts || {};
   const exams = k.exams.filter(e => validD(e.date) && e.date > t && (!onlyId || e.id === onlyId));
-  if (!exams.length) return toast(onlyId ? "Essa prova precisa de uma data a partir de amanhã para entrar no roteiro." : k.exams.length ? "Nenhuma prova com data a partir de amanhã. Confira as datas." : "Adicione as provas primeiro.");
-  const kept = k.sessions.filter(s => s.done || (onlyId && s.examId !== onlyId)); const busyDays = {};
-  if (onlyId) kept.forEach(s => { if (!s.done && s.date >= t) busyDays[s.date] = (busyDays[s.date] || 0) + s.minutes; });
-  const last = exams.reduce((m, e) => e.date > m ? e.date : m, t); const days = studyDays(t, addDays(last, -1));
-  if (!days.length) return toast("Não sobrou dia de estudo antes das provas. Em Pais, ligue o fim de semana.");
+  if (!exams.length) return toast(onlyId ? "Essa prova precisa de uma data a partir de amanh\u00e3 para entrar no roteiro." : k.exams.length ? "Nenhuma prova com data a partir de amanh\u00e3. Confira as datas." : "Adicione as provas primeiro.");
+  const kept = k.sessions.filter(s => s.done || (onlyId && s.examId !== onlyId));
+  const pace = PACE[opts.pace] ? opts.pace : paceOf();
   let sessions = [], usedAI = false;
   if (sample) {
-    busy(onlyId ? "Montando o roteiro de " + exams[0].subject + "…" : "Montando o roteiro da semana…", "Isso leva até um minuto.");
+    busy(onlyId ? "Montando o roteiro de " + exams[0].subject + "\u2026" : "Montando o roteiro\u2026", "Isso leva at\u00e9 um minuto.");
     try {
-      const r = await askJSON(planPrompt(exams, t, days, busyDays), { cache: false });
+      const r = await askJSON(planPrompt(exams, t, pace, opts), { cache: false });
+      const por = {};
       for (const s of (r && r.sessoes) || []) {
-        const ex = exams.find(e => e.id === s.prova_id); if (!ex || !validD(s.data)) continue;
-        let d = s.data; if (d >= ex.date) d = addDays(ex.date, -1); if (d < t) continue;
+        const ex = exams.find(e => e.id === s.prova_id); if (!ex) continue;
         const steps = (Array.isArray(s.passos) ? s.passos : []).filter(x => typeof x === "string" && x.trim());
         if (!steps.length) continue;
-        sessions.push(mkSession(ex, d, s.tipo === "revisao" ? "revisao" : "estudo", s.titulo || ex.subject, s.minutos, steps));
+        (por[ex.id] = por[ex.id] || []).push({ ex, tipo: s.tipo === "revisao" ? "revisao" : "estudo", titulo: s.titulo || ex.subject, minutos: s.minutos, steps, ordem: Number(s.ordem) || 99 });
+      }
+      for (const id of Object.keys(por)) {
+        const lista = por[id].sort((a, b) => a.ordem - b.ordem);
+        lista.forEach((x, i) => sessions.push(mkSession(x.ex, x.tipo === "revisao" ? addDays(x.ex.date, -1) : null, x.tipo, x.titulo, x.minutos, x.steps, i + 1)));
       }
       usedAI = sessions.length > 0;
     } catch (e) { if (e.code === "cancelled") return idle(); toast(errMsg(e) + " Montei um roteiro simples no lugar."); }
   }
-  const load = Object.assign({}, busyDays); sessions.forEach(s => load[s.date] = (load[s.date] || 0) + s.minutes);
-  for (const ex of exams) if (!sessions.some(s => s.examId === ex.id)) sessions.push(...basicSessions(ex, t, load));
-  k.sessions = kept.concat(sessions).sort((a, b) => a.date.localeCompare(b.date) || (a.type === "revisao") - (b.type === "revisao"));
-  k.planAt = t; save(); ui.tab = "hoje"; ui.day = t; ui.screen = null; idle();
+  for (const ex of exams) if (!sessions.some(s => s.examId === ex.id)) sessions.push(...basicSessions(ex, pace));
+  k.sessions = kept.concat(sessions).sort((a, b) => {
+    const da = (k.exams.find(e => e.id === a.examId) || {}).date || "9", db = (k.exams.find(e => e.id === b.examId) || {}).date || "9";
+    return da.localeCompare(db) || (a.ord || 0) - (b.ord || 0);
+  });
+  k.planAt = t; save(); ui.tab = "hoje"; ui.screen = null; idle();
   if (usedAI || !sample) toast(onlyId ? "Roteiro de " + exams[0].subject + " pronto!" : "Roteiro pronto!");
 }
 
@@ -557,37 +769,52 @@ function vWelcome() {
   return '<h1>Bora estudar para a <span class="mk">semana de prova</span>?</h1><p class="muted">Você envia o comunicado da escola e as páginas do livro. O app monta o roteiro de cada dia e faz perguntas para treinar.</p>' +
     '<div class="card"><h2>Quem vai estudar?</h2><label for="kname">Nome ou apelido</label><input id="kname" type="text" maxlength="20" autocomplete="off" value="' + esc(f.name || "") + '" placeholder="Ex.: Lulu">' +
     '<label for="kgrade">Ano na escola</label><select id="kgrade">' + SERIES.map(s => "<option" + ((f.grade || "5º ano") === s ? " selected" : "") + ">" + s + "</option>").join("") + "</select>" +
-    '<div class="btns"><button class="btn pri block" data-a="savekid">Começar</button>' + (S.kids.length ? '<button class="btn ghost block" data-a="back">Voltar</button>' : "") + "</div></div>" +
+    '<label for="kpace">Ritmo de estudo</label><select id="kpace">' + PACEK.map(pk => '<option value="' + pk + '"' + ((f.pace || "normal") === pk ? " selected" : "") + ">" + PACE[pk].label + " \u2014 " + PACE[pk].dica + "</option>").join("") + "</select>" +
+    '<div class="btns"><button class="btn pri block" data-a="savekid">Come\u00e7ar</button>' + (S.kids.length ? '<button class="btn ghost block" data-a="back">Voltar</button>' : "") + "</div></div>" +
     '<p class="small muted">Tudo fica salvo só neste aparelho. O nome não é enviado para a IA.</p>';
 }
 function ruler() {
   const k = kid(), t = today(); let end = addDays(t, 6);
   k.exams.forEach(e => { if (validD(e.date) && e.date > end && e.date <= addDays(t, 20)) end = e.date; });
-  let h = '<div class="ruler" role="group" aria-label="Dias da semana">';
+  let h = '<div class="ruler" role="group" aria-label="Pr\u00f3ximos dias">';
   for (let d = t; d <= end; d = addDays(d, 1)) {
-    const dt = parseD(d), ss = k.sessions.filter(s => s.date === d), ex = k.exams.filter(e => e.date === d);
-    h += '<button class="day' + (d === t ? " today" : "") + '" data-a="day" data-d="' + d + '" aria-pressed="' + (d === ui.day) + '" aria-label="' + esc(nice(d)) + '">' +
-      (ex.length ? '<span class="flag">PROVA</span>' : "") + '<div class="wd">' + (d === t ? "hoje" : WD[dt.getDay()]) + '</div><div class="dn">' + dt.getDate() + '</div><div class="dots">' +
-      ss.slice(0, 4).map(s => '<i class="dot' + (s.done ? " f" : "") + '"></i>').join("") + "</div></button>";
+    const dt = parseD(d), ex = k.exams.filter(e => e.date === d);
+    const rev = k.sessions.filter(s => s.date === d && !s.done).length;
+    h += '<div class="day' + (d === t ? " today" : "") + '" aria-label="' + esc(nice(d)) + '">' + (ex.length ? '<span class="flag">PROVA</span>' : "") +
+      '<div class="wd">' + (d === t ? "hoje" : WD[dt.getDay()]) + '</div><div class="dn">' + dt.getDate() + '</div><div class="dots">' +
+      (rev ? '<i class="dot f"></i>' : "") + "</div></div>";
   }
   return h + "</div>";
 }
-function sessionCard(s) {
-  const ex = examOf(s.examId);
-  return '<button class="card tap' + (s.done ? " done" : "") + '" data-a="open" data-id="' + s.id + '"><div class="row"><span class="check' + (s.done ? " on" : "") + '">' + (s.done ? "✓" : "") + '</span><div class="grow"><h3>' + esc(s.title) + '</h3><div class="small muted">' + s.minutes + " min" + (ex ? " · prova " + esc(nice(ex.date)) : "") + "</div></div>" +
-    (linksOf(ex).length ? '<span class="tag">' + (hasVideo(ex) ? "▶️ vídeo" : "🔗 link") + "</span>" : "") + (s.type === "revisao" ? '<span class="tag rev">revisão</span>' : "") + (s.score ? '<span class="tag ok">' + s.score.right + "/" + s.score.total + "</span>" : "") + "</div></button>";
+function partRow(s, n) {
+  const ex = examOf(s.examId), rev = s.type === "revisao";
+  return '<button class="step' + (s.done ? " on" : "") + '" data-a="open" data-id="' + s.id + '" style="align-items:center"><span class="check' + (s.done ? " on" : "") + '">' + (s.done ? "\u2713" : n) + '</span><span class="grow"><b>' + esc(s.title) + "</b>" +
+    '<span class="small muted" style="display:block">' + s.minutes + " min" + (rev && s.date ? " \u00b7 melhor na v\u00e9spera, " + esc(nice(s.date)) : "") + (s.score ? " \u00b7 quiz " + s.score.right + "/" + s.score.total : "") + "</span></span>" +
+    (rev ? '<span class="tag rev">revis\u00e3o</span>' : "") + "</button>";
 }
 function vHoje() {
-  const k = kid(), t = today(), d = ui.day; let h = header(d === t ? "Hoje" : (w => w[0].toUpperCase() + w.slice(1))(WDL[parseD(d).getDay()].replace("-feira", ""))) + aiBanner();
-  if (!k.exams.length) return h + '<div class="card"><h2>Nenhuma prova cadastrada</h2><p class="muted">Comece enviando o comunicado da escola com as datas e os conteúdos.</p><div class="btns"><button class="btn pri block" data-a="tab" data-t="provas">Cadastrar as provas</button></div></div>';
+  const k = kid(), t = today(); let h = header("Estudar") + aiBanner();
+  if (!k.exams.length) return h + '<div class="card"><h2>Nenhuma prova cadastrada</h2><p class="muted">Comece enviando o comunicado da escola com as datas e os conte\u00fados.</p><div class="btns"><button class="btn pri block" data-a="tab" data-t="provas">Cadastrar as provas</button></div></div>';
   h += ruler();
-  k.exams.filter(e => e.date === d).forEach(e => { h += '<div class="card alert"><h3>' + (d === t ? "Hoje tem" : "Dia de") + " prova de " + esc(e.subject) + '</h3><p class="small">' + (d === t ? "Respira fundo, lê cada pergunta com calma. Você se preparou! 🍀" : esc(e.topics)) + "</p></div>"; });
-  const ss = k.sessions.filter(s => s.date === d);
-  if (!k.sessions.length) h += '<div class="card"><h2>Falta montar o roteiro</h2><p class="muted">As provas já estão cadastradas. Envie as páginas de estudo e monte o roteiro.</p><div class="btns"><button class="btn pri block" data-a="tab" data-t="provas">Ir para as provas</button></div></div>';
-  else if (!ss.length) h += '<div class="card"><p>' + (d === t ? "Nada marcado para hoje. Pode descansar ou adiantar o de amanhã." : "Nada marcado para este dia.") + "</p></div>";
-  else { const left = ss.filter(s => !s.done); h += '<p class="muted small">' + (left.length ? left.reduce((a, s) => a + s.minutes, 0) + " minutos de estudo " + (d === t ? "para hoje" : "neste dia") : "Tudo feito por aqui! ⭐") + "</p>" + ss.map(sessionCard).join(""); }
-  const late = k.sessions.filter(s => !s.done && s.date < t && (examOf(s.examId)?.date || "") >= t);
-  if (late.length && d === t) h += '<h2 style="margin-top:18px">Ficou para trás</h2>' + late.map(sessionCard).join("");
+  k.exams.filter(e => e.date === t).forEach(e => { h += '<div class="card alert"><h3>Hoje tem prova de ' + esc(e.subject) + '</h3><p class="small">Respira fundo, l\u00ea cada pergunta com calma. Voc\u00ea se preparou! \ud83c\udf40</p></div>'; });
+  if (!k.sessions.length) return h + '<div class="card"><h2>Falta montar o roteiro</h2><p class="muted">As provas j\u00e1 est\u00e3o cadastradas. Envie as p\u00e1ginas de estudo e monte o roteiro.</p><div class="btns"><button class="btn pri block" data-a="tab" data-t="provas">Ir para as provas</button></div></div>';
+  // revisao de vespera que cai hoje ganha destaque
+  const hoje = k.sessions.filter(s => s.date === t && !s.done);
+  if (hoje.length) h += '<div class="card" style="border-color:var(--ink)"><h2>\u2b50 A prova \u00e9 amanh\u00e3</h2><p class="small muted">Esta \u00e9 a revis\u00e3o de v\u00e9spera. Ela traz de volta o que voc\u00ea errou nos quizzes.</p>' + hoje.map((s, i) => partRow(s, i + 1)).join("") + "</div>";
+  const futuras = k.exams.filter(e => validD(e.date) && e.date >= t).sort((a, b) => a.date.localeCompare(b.date));
+  let algum = false;
+  futuras.forEach(e => {
+    const ss = k.sessions.filter(s => s.examId === e.id).sort((a, b) => (a.ord || 0) - (b.ord || 0));
+    if (!ss.length) return;
+    algum = true;
+    const feitas = ss.filter(s => s.done).length, dias = Math.round((parseD(e.date) - parseD(t)) / 864e5);
+    h += '<div class="card"><div class="row between"><h2>' + esc(e.subject) + '</h2><span class="tag' + (dias <= 1 ? " bad" : "") + '">' + (dias === 0 ? "hoje" : dias === 1 ? "amanh\u00e3" : "em " + dias + " dias") + "</span></div>" +
+      '<p class="small muted">' + esc(nice(e.date)) + " \u00b7 " + feitas + " de " + ss.length + " partes feitas</p>" +
+      '<div class="bar"><i style="width:' + Math.round(feitas / ss.length * 100) + '%"></i></div>' +
+      (feitas === ss.length ? '<p class="small"><span class="tag ok">tudo feito! \u2b50</span></p>' : '<p class="small muted">Escolha por onde come\u00e7ar:</p>') +
+      ss.map((s, i) => partRow(s, i + 1)).join("") + "</div>";
+  });
+  if (!algum) h += '<div class="card"><p class="muted">Nenhuma parte de estudo montada ainda.</p></div>';
   return h;
 }
 function vProvas() {
@@ -597,9 +824,9 @@ function vProvas() {
   k.exams.forEach(e => {
     const past = validD(e.date) && e.date < t;
     h += '<div class="card' + (past ? " done" : "") + '"><div class="row between"><h2>' + esc(e.subject) + "</h2>" + (validD(e.date) ? '<span class="tag' + (e.date === addDays(t, 1) ? " bad" : "") + '">' + esc(nice(e.date)) + "</span>" : '<span class="tag bad">sem data</span>') + "</div>" +
-      (e.topics ? "<p>" + esc(e.topics) + "</p>" : "") + (e.pages ? '<p class="small muted">Estudar: ' + esc(e.pages) + "</p>" : "") + linksHtml(e) +
+      (e.topics ? "<p>" + esc(e.topics) + "</p>" : "") + (e.pages ? '<p class="small muted">Estudar: ' + esc(e.pages) + "</p>" : "") + (matLabel(e) ? '<p class="small muted">\ud83d\udcda ' + esc(matLabel(e)) + "</p>" : "") + (cov(e) ? '<p class="small" style="color:var(--bad)">\u26a0\ufe0f O comunicado pede cerca de ' + cov(e).want + ' p\u00e1gina(s), mas s\u00f3 ' + cov(e).got + ' entrou(aram) no app.</p>' : "") + linksHtml(e) +
       '<p class="small">' + (k.sessions.some(x => x.examId === e.id) ? '<span class="tag ok">no roteiro</span> ' : '<span class="tag">fora do roteiro</span> ') + (e.nPages ? '<span class="tag ok">' + e.nPages + " material(is) guardado(s)</span>" : '<span class="tag">material ainda não enviado</span>') + "</p>" +
-      '<div class="btns"><button class="btn" data-a="pages" data-id="' + e.id + '">📷 ' + (e.nPages ? "Mais páginas" : "Enviar páginas") + '</button><button class="btn" data-a="paste" data-id="' + e.id + '">📋 Colar texto</button>' + (past ? "" : '<button class="btn pri" data-a="planone" data-id="' + e.id + '">🗓️ ' + (k.sessions.some(x => x.examId === e.id) ? "Refazer roteiro desta prova" : "Montar roteiro desta prova") + "</button>") + '<button class="btn ghost" data-a="editexam" data-id="' + e.id + '">Editar</button></div></div>';
+      '<div class="btns"><button class="btn" data-a="pages" data-id="' + e.id + '">📷 ' + (e.nPages ? "Mais páginas" : "Enviar páginas") + '</button><button class="btn" data-a="paste" data-id="' + e.id + '">📋 Colar texto</button>' + (past ? "" : '<button class="btn pri" data-a="planone" data-id="' + e.id + '">🗓️ ' + (k.sessions.some(x => x.examId === e.id) ? "Refazer roteiro desta prova" : "Montar roteiro desta prova") + "</button>") + '<button class="btn ghost" data-a="editexam" data-id="' + e.id + '">Editar</button><button class="btn ghost" data-a="diag" data-id="' + e.id + '">🔍 O que a IA entendeu</button></div></div>';
   });
   if (k.exams.length) h += '<div class="card"><h2>Roteiro de todas as provas</h2><p class="muted small">' + (k.sessions.length ? "Refaz o roteiro de todas as provas de uma vez. O que já foi feito continua marcado. Para mexer em uma só, use o botão dentro da prova." : "Confira datas e conteúdos acima. Com as páginas enviadas, as perguntas ficam iguais ao que cai na prova.") + '</p><div class="btns"><button class="btn pri block" data-a="plan">' + (k.sessions.length ? "Montar de novo com todas" : "Montar o roteiro de todas") + "</button></div></div>";
   return h;
@@ -616,14 +843,15 @@ function vPaste() {
 }
 function vExamForm() {
   const f = ui.form, isNew = !f.id;
-  return '<button class="link" data-a="back">‹ Voltar</button><h1>' + (isNew ? "Nova prova" : "Editar prova") + '</h1><div class="card"><label for="esub">Matéria</label><input id="esub" type="text" maxlength="60" value="' + esc(f.subject || "") + '"><label for="edate">Dia da prova</label><input id="edate" type="date" value="' + esc(f.date || "") + '"><label for="etop">O que cai</label><textarea id="etop" maxlength="800">' + esc(f.topics || "") + '</textarea><label for="epag">Páginas ou materiais para estudar</label><input id="epag" type="text" maxlength="300" value="' + esc(f.pages || "") + '"><label for="elinks">Links que a professora indicou (um por linha)</label><textarea id="elinks" placeholder="https://youtu.be/... Vídeo de verbos">' + esc(f.links || "") + '</textarea><p class="small muted">Cole o endereço e, se quiser, escreva depois dele o que é.</p>' +
+  return '<button class="link" data-a="back">‹ Voltar</button><h1>' + (isNew ? "Nova prova" : "Editar prova") + '</h1><div class="card"><label for="esub">Matéria</label><input id="esub" type="text" maxlength="60" value="' + esc(f.subject || "") + '"><label for="edate">Dia da prova</label><input id="edate" type="date" value="' + esc(f.date || "") + '"><label for="etop">O que cai</label><textarea id="etop" maxlength="800">' + esc(f.topics || "") + '</textarea><label for="epag">Páginas ou materiais para estudar</label><input id="epag" type="text" maxlength="300" value="' + esc(f.pages || "") + '"><label for="elinks">Links que a professora indicou (um por linha)</label><textarea id="elinks" placeholder="https://youtu.be/... Vídeo de verbos">' + esc(f.links || "") + '</textarea><p class="small muted">Cole o endere\u00e7o e, se quiser, escreva depois dele o que \u00e9.</p><h3 style="margin-top:14px">Material de estudo</h3><p class="small muted">A IA preenche sozinha ao ler as p\u00e1ginas. Corrija se estiver errado: \u00e9 isso que permite reaproveitar o conte\u00fado depois.</p><label for="msis">Sistema ou editora</label><input id="msis" type="text" maxlength="60" placeholder="Ex.: Objetivo" value="' + esc(f.msis || "") + '"><label for="mvol">Volume ou caderno</label><input id="mvol" type="text" maxlength="60" placeholder="Ex.: Apostila 2" value="' + esc(f.mvol || "") + '"><label for="medi">Edi\u00e7\u00e3o ou ano</label><input id="medi" type="text" maxlength="60" placeholder="Ex.: 2026" value="' + esc(f.medi || "") + '">' +
     '<div class="btns"><button class="btn pri grow" data-a="saveexam">Salvar prova</button>' + (isNew ? "" : '<button class="btn danger" data-a="delexam">Apagar</button>') + "</div></div>" +
     (!isNew && f.nPages ? '<div class="card"><p class="small muted">' + f.nPages + ' página(s) lidas para esta prova.</p><button class="btn ghost" data-a="clearpages">Apagar as páginas lidas</button></div>' : "");
 }
 function vSession() {
   const s = sessOf(ui.arg), ex = s && examOf(s.examId); if (!s || !ex) { ui.screen = null; return vHoje(); }
   const allSteps = s.steps.every(x => x.done), text = ui.explainLive || s.explain;
-  return '<button class="link" data-a="back">‹ Voltar</button><p class="small muted" style="margin:6px 0 0">' + esc(nice(s.date)) + " · " + s.minutes + " min" + (s.type === "revisao" ? " · revisão" : "") + '</p><h1><span class="mk">' + esc(s.title) + "</span></h1>" +
+  return '<button class="link" data-a="back">\u2039 Voltar</button><p class="small muted" style="margin:6px 0 0">' + (s.date ? esc(nice(s.date)) + " \u00b7 " : "") + "Parte " + (s.ord || 1) + " \u00b7 " + s.minutes + " min" + (s.type === "revisao" ? " \u00b7 revis\u00e3o" : "") + '</p><h1><span class="mk">' + esc(s.title) + "</span></h1>" +
+   
     (linksOf(ex).length ? '<div class="card">' + linksHtml(ex, "A professora pediu para " + (hasVideo(ex) ? "assistir" : "acessar")) + "</div>" : "") +
     '<div class="card"><h2>O que fazer</h2>' + s.steps.map((x, i) => '<button class="step' + (x.done ? " on" : "") + '" data-a="step" data-i="' + i + '" aria-pressed="' + x.done + '"><span class="check' + (x.done ? " on" : "") + '">' + (x.done ? "✓" : i + 1) + "</span><span>" + esc(x.t) + "</span></button>").join("") + "</div>" +
     '<div class="card"><h2>Não entendeu alguma parte?</h2>' + (text ? '<div class="explain" id="explain">' + esc(text) + "</div>" : '<p class="muted small">O app explica o assunto desta sessão do jeito mais fácil.</p>') + '<div class="btns"><button class="btn" data-a="explain"' + (ui.explainLive ? " disabled" : "") + ">💡 " + (s.explain ? "Explicar de outro jeito" : "Explica pra mim") + "</button></div></div>" +
@@ -654,12 +882,36 @@ function vPais() {
       (weak.length ? '<p class="small"><b>Pontos de atenção:</b> ' + esc(weak.join("; ")) + "</p>" : "") + "</div>";
   });
   h += '<div class="card"><h2>Inteligência artificial</h2>' + (sample ? '<p class="small"><span class="tag ok">ligada</span> ' + esc(G.model || (G.models && G.models[0]) || "Gemini") + '</p><p class="small muted">A chave fica guardada só neste aparelho e não entra na cópia de segurança.</p><div class="btns"><button class="btn ghost" data-a="goff">Desligar e apagar a chave</button></div>' : '<p class="small muted">Cole aqui a chave gratuita do Gemini (Google AI Studio). Ela fica só neste aparelho.</p><label for="gkey">Chave do Gemini</label><input id="gkey" type="password" autocomplete="off" placeholder="Cole a chave (começa com AQ. ou AIza)"><div class="btns"><button class="btn pri block" data-a="gsave">Salvar e testar</button></div>') + "</div>";
+  h += '<div class="card"><h2>Segunda IA (opcional)</h2>' + (R.key ? '<p class="small"><span class="tag ok">ligada</span> ' + esc(R.model || R.models[0] || "Groq") + '</p><p class="small muted">O Groq cuida do roteiro, da explica\u00e7\u00e3o e do quiz, que ficam bem mais r\u00e1pidos nele. Ler foto, PDF e v\u00eddeo continua sempre no Gemini.</p><div class="btns"><button class="btn ghost" data-a="roff">Desligar e apagar a chave</button></div>' : '<p class="small muted">Opcional, e deixa o roteiro, a explica\u00e7\u00e3o e o quiz bem mais r\u00e1pidos. Chave gratuita em console.groq.com. Ler foto, PDF e v\u00eddeo continua sempre no Gemini.</p><label for="rkey">Chave do Groq</label><input id="rkey" type="password" autocomplete="off" placeholder="Cole a chave (come\u00e7a com gsk_)"><div class="btns"><button class="btn pri block" data-a="rsave">Salvar e testar</button></div>') + '</div>';
   h += '<div class="card"><h2>Ajustes do roteiro</h2><label for="smin">Tempo máximo de estudo por dia</label><select id="smin" data-c="minutes">' + [30, 45, 60, 90].map(m => '<option value="' + m + '"' + (S.settings.minutes === m ? " selected" : "") + ">" + m + " minutos</option>").join("") + '</select><label class="row" style="font-weight:600;margin-top:12px"><input type="checkbox" data-c="weekends"' + (S.settings.weekends ? " checked" : "") + ' style="width:22px;height:22px"> Estudar também no fim de semana</label><p class="small muted">Vale para o próximo roteiro montado.</p></div>';
-  h += '<div class="card"><h2>Crianças</h2>' + S.kids.map(x => '<div class="row between" style="padding:6px 0"><span><b>' + esc(x.name) + "</b> · " + esc(x.grade) + '</span><button class="link" data-a="delkid" data-id="' + x.id + '">remover</button></div>').join("") + '<div class="btns"><button class="btn" data-a="newkid">＋ Adicionar criança</button><button class="btn ghost" data-a="newweek">Nova semana de provas</button></div></div>';
+  h += '<div class="card"><h2>Crian\u00e7as</h2>' + S.kids.map(x => '<div style="padding:8px 0;border-bottom:1.5px dashed var(--line)"><div class="row between"><span><b>' + esc(x.name) + "</b> \u00b7 " + esc(x.grade) + '</span><button class="link" data-a="delkid" data-id="' + x.id + '">remover</button></div><label for="pc' + x.id + '" class="small">Ritmo de estudo</label><select id="pc' + x.id + '" data-c="pace" data-id="' + x.id + '">' + PACEK.map(pk => '<option value="' + pk + '"' + (paceOf(x) === pk ? " selected" : "") + ">" + PACE[pk].label + "</option>").join("") + '</select><p class="small muted">' + esc(PACE[paceOf(x)].dica) + "</p></div>").join("") + '<div class="btns"><button class="btn" data-a="newkid">\uff0b Adicionar crian\u00e7a</button><button class="btn ghost" data-a="newweek">Nova semana de provas</button></div></div>';
+  h += '<div class="card"><h2>Di\u00e1rio t\u00e9cnico</h2><p class="small muted">As \u00faltimas coisas que a IA fez neste aparelho. Serve para entender por que algo demorou ou falhou.</p>' + (LOG.length ? '<div style="max-height:320px;overflow:auto;margin-top:8px">' + LOG.map(l => '<div class="row between" style="padding:6px 0;border-bottom:1.5px dashed var(--line);gap:8px"><span class="grow small"><b>' + esc(l.tarefa) + '</b> <span class="muted">' + esc(l.ia) + " \u00b7 " + esc(String(l.modelo || "")) + '</span><br><span class="muted" style="font-size:.8rem">' + esc(l.hora) + " \u00b7 " + esc(String(l.seg)) + "s \u00b7 entrada " + esc(String(l.entrada)) + " car." + (l.fotos ? " \u00b7 " + esc(String(l.fotos)) + " foto(s)" : "") + (l.ok ? " \u00b7 sa\u00edda " + esc(String(l.saida)) + " car." : "") + '</span></span><span class="tag ' + (l.ok ? "ok" : "bad") + '">' + (l.ok ? "ok" : esc(String(l.erro))) + "</span></div>").join("") + "</div>" + '<div class="btns"><button class="btn ghost" data-a="clearlog">Limpar di\u00e1rio</button></div>' : '<p class="small muted">Nada registrado ainda.</p>') + "</div>";
   h += '<div class="card"><h2>Cópia de segurança</h2><p class="small muted">' + (storageOk ? "Os dados ficam só neste aparelho e neste navegador." : "<b>Atenção:</b> este navegador não está deixando salvar; ao fechar, os dados se perdem.") + ' Para levar a outro aparelho, copie o código e cole lá.</p><div class="btns"><button class="btn ghost" data-a="export">Mostrar código</button><button class="btn ghost" data-a="import">Colar código</button></div>' +
     (ui.form.io ? '<textarea id="io" style="margin-top:10px;font-size:.78rem" ' + (ui.form.io === "export" ? "readonly>" + esc(JSON.stringify(S)) : 'placeholder="Cole o código aqui">') + "</textarea>" + (ui.form.io === "import" ? '<div class="btns"><button class="btn pri" data-a="doimport">Restaurar</button></div>' : "") : "") + "</div>";
   h += '<p class="small muted">As explicações e perguntas são feitas por IA a partir do material enviado e podem conter erros. Na dúvida, vale o que está no livro e o que a professora ensinou.</p>';
   return h;
+}
+function vDiag() {
+  const e = examOf(ui.arg), k = kid(); if (!e) { ui.screen = null; return vProvas(); }
+  seedBlocks(e);
+  const ss = k.sessions.filter(x => x.examId === e.id);
+  let h = '<button class="link" data-a="back">\u2039 Voltar</button><h1>O que a IA entendeu</h1><p class="muted">Prova de ' + esc(e.subject) + ". Confira aqui de onde veio cada coisa.</p>";
+  h += '<div class="card"><h2>1. Do comunicado</h2><p class="small"><b>Data:</b> ' + (validD(e.date) ? esc(nice(e.date)) : "sem data") + '</p><p class="small"><b>O que cai:</b> ' + (esc(e.topics) || '<span class="muted">nada anotado</span>') + '</p><p class="small"><b>P\u00e1ginas indicadas:</b> ' + (e.pages ? '<b class="mk">' + esc(e.pages) + "</b>" : '<span class="muted">nada anotado</span>') + '</p><p class="small muted">Se as p\u00e1ginas acima estiverem erradas, a IA leu o comunicado errado. Corrija em Editar e monte o roteiro de novo.</p><div class="btns"><button class="btn ghost" data-a="editexam" data-id="' + e.id + '">Editar a prova</button></div></div>';
+  h += '<div class="card"><h2>2. Material lido</h2>' + (matLabel(e) ? '<p class="small"><b>Identificado como:</b> ' + esc(matLabel(e)) + "</p>" : '<p class="small muted">Material n\u00e3o identificado.</p>') +
+    '<p class="small"><b>' + e.blocks.length + " bloco(s)</b> \u00b7 " + (e.content || "").length + " caracteres guardados" + ((e.content || "").length >= MAX_CONTENT ? ' \u00b7 <span class="tag bad">no limite</span>' : "") + "</p>" +
+    (e.blocks.length ? '<div style="max-height:300px;overflow:auto">' + e.blocks.map((b, i) => '<div style="padding:6px 0;border-bottom:1.5px dashed var(--line)"><div class="row between"><span class="grow small"><b>' + (esc(b.assunto) || "(sem assunto)") + "</b>" + (b.pagina ? ' <span class="tag">p. ' + esc(b.pagina) + "</span>" : "") + "</span><span class=\"small muted\">" + b.texto.length + " car.</span></div>" + (b.conceitos && b.conceitos.length ? '<p class="small muted" style="margin:2px 0">' + esc(b.conceitos.join(", ")) + "</p>" : "") + '<button class="link small" data-a="blocktxt" data-i="' + i + '">' + (ui.openBlock === i ? "esconder o texto" : "ver o texto") + "</button>" + (ui.openBlock === i ? '<div class="explain small">' + esc(b.texto) + "</div>" : "") + "</div>").join("") + "</div>" : '<p class="small muted">Nenhuma p\u00e1gina lida ainda.</p>') + "</div>";
+  h += '<div class="card"><h2>3. Roteiro montado</h2>' + (ss.length ? ss.map(x => '<div style="padding:8px 0;border-bottom:1.5px dashed var(--line)"><div class="row between"><span class="grow small"><b>' + esc(x.title) + "</b></span><span class=\"small muted\">" + esc(nice(x.date)) + " \u00b7 " + x.minutes + " min</span></div><ul class=\"plain small\">" + x.steps.map(y => "<li>" + esc(y.t) + "</li>").join("") + "</ul></div>").join("") : '<p class="small muted">Roteiro ainda n\u00e3o montado.</p>') +
+    '<p class="small muted">Os passos s\u00e3o escritos pela IA a partir das p\u00e1ginas indicadas acima. Se ela citou um intervalo menor que o do comunicado, foi ela que dividiu o conte\u00fado \u2014 confira se todas as p\u00e1ginas aparecem somando as sess\u00f5es.</p>' +
+    (ss.length ? '<div class="btns"><button class="btn" data-a="planone" data-id="' + e.id + '">Refazer o roteiro desta prova</button></div>' : "") + "</div>";
+  return h;
+}
+function vPages() {
+  const e = examOf(ui.arg); if (!e) { ui.screen = null; return vProvas(); }
+  return '<button class="link" data-a="back">\u2039 Voltar</button><h1>P\u00e1ginas de ' + esc(e.subject) + '</h1><p class="muted">Tire uma foto por p\u00e1gina, na ordem. Elas se juntam aqui e s\u00e3o lidas todas de uma vez.</p>' +
+    '<div class="card">' + (ui.files.length ? "<h3>" + ui.files.length + ' p\u00e1gina(s) na fila</h3><div style="max-height:260px;overflow:auto">' + ui.files.map((f, i) => '<div class="row between" style="padding:6px 0;border-bottom:1.5px dashed var(--line)"><span class="grow small" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (i + 1) + ". " + (isPdf(f) ? "\ud83d\udcd5 " : isDocx(f) ? "\ud83d\udcd8 " : "\ud83d\uddbc\ufe0f ") + esc(f.name || "foto") + '</span><button class="link" data-a="rmfile" data-i="' + i + '">tirar</button></div>').join("") + "</div>" : '<p class="muted small">Nenhuma p\u00e1gina na fila ainda.</p>') +
+    '<div class="btns"><button class="btn pri block" data-a="pagecam">\ud83d\udcf7 Tirar foto da p\u00e1gina</button><button class="btn block" data-a="pagefile">\ud83d\uddbc\ufe0f Escolher do aparelho</button></div>' +
+    (ui.files.length ? '<div class="btns"><button class="btn pri block" data-a="pagesgo">Ler as ' + ui.files.length + ' p\u00e1gina(s)</button></div>' : "") + "</div>" +
+    '<p class="small muted">As fotos s\u00e3o lidas pelo Gemini e n\u00e3o ficam guardadas: o app salva s\u00f3 o texto, neste aparelho. Se puder, corte da foto o nome completo da crian\u00e7a.</p>';
 }
 function render() {
   const k = kid(); let h;
@@ -667,25 +919,26 @@ function render() {
   else if (ui.screen === "notice") h = vNotice();
   else if (ui.screen === "exam") h = vExamForm();
   else if (ui.screen === "paste") h = vPaste();
+  else if (ui.screen === "pages") h = vPages();
+  else if (ui.screen === "diag") h = vDiag();
   else if (ui.screen === "session") h = vSession();
   else if (ui.screen === "quiz") h = vQuiz();
   else if (ui.screen === "result") h = vResult();
   else h = ui.tab === "provas" ? vProvas() : ui.tab === "pais" ? vPais() : vHoje();
   if (k && !ui.screen) h += '<nav class="nav" aria-label="Seções">' + [["hoje", "📅", "Hoje"], ["provas", "📝", "Provas"], ["pais", "👀", "Pais"]].map(([t, ic, l]) => '<button data-a="tab" data-t="' + t + '"' + (ui.tab === t ? ' aria-current="page"' : "") + '><span class="ic">' + ic + "</span>" + l + "</button>").join("") + "</nav>";
   if (ui.busy) h += '<div class="veil" role="alertdialog" aria-label="Aguarde"><div class="card"><div class="pencil">✏️</div><h2>' + esc(ui.busy.msg) + '</h2><p class="muted small">' + esc(ui.busy.sub) + '</p><div class="btns" style="justify-content:center"><button class="btn ghost" data-a="stop">Parar</button></div></div></div>';
-  if (ui.confirm) h += '<div class="veil" role="alertdialog" aria-label="Confirmar"><div class="card"><h2>' + esc(ui.confirm.msg) + '</h2><div class="btns" style="justify-content:center"><button class="btn ghost" data-a="cno">Cancelar</button><button class="btn pri" data-a="cyes">' + esc(ui.confirm.label || "Sim") + "</button></div></div></div>";
+  if (ui.confirm) h += '<div class="veil" role="alertdialog" aria-label="Confirmar"><div class="card"><h2>' + esc(ui.confirm.msg) + '</h2><div class="btns" style="justify-content:center;flex-direction:column">' + (ui.confirm.opts ? ui.confirm.opts.map((o, i) => '<button class="btn ' + (o.pri ? "pri" : "") + ' block" data-a="copt" data-i="' + i + '">' + esc(o.label) + "</button>").join("") + '<button class="btn ghost block" data-a="cno">Cancelar</button>' : '<button class="btn ghost" data-a="cno">Cancelar</button><button class="btn pri" data-a="cyes">' + esc(ui.confirm.label || "Sim") + "</button>") + "</div></div></div>";
   $("#app").innerHTML = h;
 }
-function keepForm() { document.querySelectorAll("#app input[id],#app textarea[id],#app select[id]").forEach(el => { const m = { kname: "name", kgrade: "grade", ntext: "ntext", esub: "subject", edate: "date", etop: "topics", epag: "pages", elinks: "links", ptext: "ptext" }[el.id]; if (m) ui.form[m] = el.value; }); }
+function keepForm() { document.querySelectorAll("#app input[id],#app textarea[id],#app select[id]").forEach(el => { const m = { kname: "name", kgrade: "grade", kpace: "pace", ntext: "ntext", esub: "subject", edate: "date", etop: "topics", epag: "pages", elinks: "links", ptext: "ptext", msis: "msis", mvol: "mvol", medi: "medi" }[el.id]; if (m) ui.form[m] = el.value; }); }
 
 /* ============ ações ============ */
 const A = {
-  tab(d) { ui.tab = d.t; ui.screen = null; ui.form = {}; if (d.t === "hoje") ui.day = today(); },
-  day(d) { ui.day = d.d; },
-  kid(d) { S.active = d.id; save(); ui.screen = null; ui.day = today(); },
+  tab(d) { ui.tab = d.t; ui.screen = null; ui.form = {}; },
+  kid(d) { S.active = d.id; save(); ui.screen = null; },
   newkid() { ui.form = {}; ui.screen = "welcome"; },
   back() { ui.screen = null; ui.form = {}; if (ctl) ctl.abort(); ui.explainLive = ""; },
-  savekid() { const name = (ui.form.name || "").trim(); if (!name) return toast("Escreva o nome ou apelido."); const k = { id: uid(), name: name.slice(0, 20), grade: ui.form.grade || "5º ano", exams: [], sessions: [], planAt: null }; S.kids.push(k); S.active = k.id; save(); ui.screen = null; ui.form = {}; ui.tab = "provas"; },
+  savekid() { const name = (ui.form.name || "").trim(); if (!name) return toast("Escreva o nome ou apelido."); const k = { id: uid(), name: name.slice(0, 20), grade: ui.form.grade || "5º ano", pace: PACE[ui.form.pace] ? ui.form.pace : "normal", exams: [], sessions: [], planAt: null }; S.kids.push(k); S.active = k.id; save(); ui.screen = null; ui.form = {}; ui.tab = "provas"; },
   delkid(d) { const x = S.kids.find(k => k.id === d.id); if (!x) return; confirmBox("Remover " + x.name + " e tudo o que foi salvo?", () => { S.kids = S.kids.filter(k => k.id !== d.id); if (S.active === d.id) S.active = S.kids[0]?.id || null; save(); }, "Remover"); },
   newweek() { const k = kid(); confirmBox("Apagar as provas e o roteiro de " + k.name + " para começar uma nova semana?", () => { k.exams = []; k.sessions = []; k.planAt = null; save(); ui.tab = "provas"; }, "Apagar"); },
   notice() { ui.form = {}; ui.files = []; ui.screen = "notice"; },
@@ -693,18 +946,25 @@ const A = {
   rmfile(d) { ui.files.splice(+d.i, 1); },
   noticego() { const t = (ui.form.ntext || "").trim(); if (!ui.files.length && t.length < 10) return toast("Escolha os arquivos ou cole o texto do aviso."); readNotice(ui.files.slice(), t); },
   addexam() { ui.form = {}; ui.screen = "exam"; },
-  editexam(d) { const e = examOf(d.id); if (!e) return; ui.form = { id: e.id, subject: e.subject, date: e.date, topics: e.topics, pages: e.pages, nPages: e.nPages, links: linksOf(e).map(l => l.url + (l.label ? " " + l.label : "")).join("\n") }; ui.screen = "exam"; },
-  saveexam() { const f = ui.form, k = kid(); if (!(f.subject || "").trim()) return toast("Escreva a matéria."); if (!validD(f.date)) return toast("Escolha o dia da prova."); let e = f.id && examOf(f.id); if (!e) { e = { id: uid(), content: "", nPages: 0, misses: [], asked: [] }; k.exams.push(e); } const moved = e.date && e.date !== f.date; Object.assign(e, { subject: f.subject.trim().slice(0, 60), date: f.date, topics: (f.topics || "").trim(), pages: (f.pages || "").trim(), links: parseLinks(f.links) }); k.exams.sort((a, b) => (a.date || "9").localeCompare(b.date || "9")); save(); ui.screen = null; ui.form = {}; if (moved && k.sessions.length) toast("Data mudou: monte o roteiro de novo."); },
+  editexam(d) { const e = examOf(d.id); if (!e) return; ui.form = { id: e.id, subject: e.subject, date: e.date, topics: e.topics, pages: e.pages, nPages: e.nPages, links: linksOf(e).map(l => l.url + (l.label ? " " + l.label : "")).join("\n"), msis: (e.material || {}).sistema || "", mvol: (e.material || {}).volume || "", medi: (e.material || {}).edicao || "" }; ui.screen = "exam"; },
+  saveexam() { const f = ui.form, k = kid(); if (!(f.subject || "").trim()) return toast("Escreva a matéria."); if (!validD(f.date)) return toast("Escolha o dia da prova."); let e = f.id && examOf(f.id); if (!e) { e = { id: uid(), content: "", blocks: [], material: null, nPages: 0, misses: [], asked: [] }; k.exams.push(e); } const moved = e.date && e.date !== f.date; Object.assign(e, { subject: f.subject.trim().slice(0, 60), date: f.date, topics: (f.topics || "").trim(), pages: (f.pages || "").trim(), links: parseLinks(f.links) }); const ms = (f.msis || "").trim(), mv = (f.mvol || "").trim(), me = (f.medi || "").trim(); e.material = (ms || mv || me) ? { sistema: ms.slice(0, 60), volume: mv.slice(0, 60), edicao: me.slice(0, 60), serie: (e.material && e.material.serie) || kid().grade } : null; k.exams.sort((a, b) => (a.date || "9").localeCompare(b.date || "9")); save(); ui.screen = null; ui.form = {}; if (moved && k.sessions.length) toast("Data mudou: monte o roteiro de novo."); },
   delexam() { const k = kid(), id = ui.form.id; confirmBox("Apagar esta prova e as sessões dela?", () => { k.exams = k.exams.filter(e => e.id !== id); k.sessions = k.sessions.filter(s => s.examId !== id); save(); ui.screen = null; ui.form = {}; }, "Apagar"); },
-  clearpages() { const e = examOf(ui.form.id); if (!e) return; confirmBox("Apagar o conteúdo lido das páginas desta prova?", () => { e.content = ""; e.nPages = 0; ui.form.nPages = 0; save(); }, "Apagar"); },
-  pages(d) { readPages(d.id); },
+  clearpages() { const e = examOf(ui.form.id); if (!e) return; confirmBox("Apagar o conte\u00fado lido das p\u00e1ginas desta prova?", () => { e.content = ""; e.blocks = []; e.material = null; e.nPages = 0; ui.form.nPages = 0; save(); }, "Apagar"); },
+  pages(d) { ui.form = {}; ui.files = []; ui.arg = d.id; ui.screen = "pages"; window.scrollTo(0, 0); },
+  async pagecam() { const files = await pickFiles(true); for (const f of files) if (ui.files.length < 24) ui.files.push(f); render(); },
+  async pagefile() { const files = await pickFiles(false); for (const f of files) if (ui.files.length < 24) ui.files.push(f); render(); },
+  pagesgo() { if (!ui.files.length) return toast("Tire ou escolha ao menos uma p\u00e1gina."); readPages(ui.arg, ui.files.slice()); },
+  diag(d) { ui.arg = d.id; ui.openBlock = null; ui.screen = "diag"; window.scrollTo(0, 0); },
+  blocktxt(d) { ui.openBlock = ui.openBlock === +d.i ? null : +d.i; },
   video(d) { readVideo(d.id, d.u); },
   async gsave() { const key = ($("#gkey") ? $("#gkey").value : "").trim(); if (key.length < 20) return toast("Cole a chave inteira do Gemini."); busy("Testando a chave…"); try { await connectGemini(key); idle(); toast("IA ligada! Modelo: " + (G.models[0] || "Gemini")); } catch (e) { idle(); toast(errMsg(e)); } },
+  async rsave() { const key = ($("#rkey") ? $("#rkey").value : "").trim(); if (key.length < 20) return toast("Cole a chave inteira do Groq."); busy("Testando a chave\u2026"); try { await connectGroq(key); idle(); toast("Segunda IA ligada! Modelo: " + (R.models[0] || "Groq")); } catch (e) { idle(); toast(errMsg(e)); } },
+  roff() { confirmBox("Desligar a segunda IA e apagar a chave deste aparelho?", () => { R = {}; saveR(); }, "Desligar"); },
   goff() { confirmBox("Desligar a IA e apagar a chave deste aparelho?", () => { G = {}; saveG(); sample = null; }, "Desligar"); },
-  planone(d) { const e = examOf(d.id); if (!e) return; if (!e.content && sample) return confirmBox("Ainda não há material de " + e.subject + ". Montar o roteiro só com os assuntos do comunicado?", () => makePlan(e.id), "Montar"); return makePlan(e.id); },
+  planone(d) { const e = examOf(d.id); if (!e) return; return startPlan(e.id); },
   paste(d) { ui.form = {}; ui.arg = d.id; ui.screen = "paste"; window.scrollTo(0, 0); },
-  savepaste() { const e = examOf(ui.arg), t = (ui.form.ptext || "").trim(); if (!e) return; if (t.length < 20) return toast("Cole o texto do material primeiro."); e.content = ((e.content ? e.content + "\n\n" : "") + t).slice(0, MAX_CONTENT); e.nPages = (e.nPages || 0) + 1; save(); ui.screen = null; ui.form = {}; toast("Material guardado! Já vale para as explicações e os quizzes."); },
-  plan() { const k = kid(); const missing = k.exams.filter(e => !e.nPages && e.date > today()).length; if (missing && sample) return confirmBox(missing + " prova(s) ainda sem páginas enviadas. Montar o roteiro mesmo assim?", makePlan, "Montar"); return makePlan(); },
+  savepaste() { const e = examOf(ui.arg), t = (ui.form.ptext || "").trim(); if (!e) return; if (t.length < 20) return toast("Cole o texto do material primeiro."); const a = addText(e, "Material colado", t); e.nPages = (e.nPages || 0) + 1; save(); ui.screen = null; ui.form = {}; toast(a.added ? "Material guardado! J\u00e1 vale para as explica\u00e7\u00f5es e os quizzes." : "Esse texto j\u00e1 estava guardado."); },
+  plan() { return startPlan(null); },
   open(d) { ui.screen = "session"; ui.arg = d.id; ui.explainLive = ""; window.scrollTo(0, 0); },
   step(d) { const s = sessOf(ui.arg); if (!s) return; const x = s.steps[+d.i]; x.done = !x.done; save(); if (sample && s.steps.every(y => y.done) && !s.score) fetchQuiz(s.id).catch(() => {}); },
   toggledone() { const s = sessOf(ui.arg); s.done = !s.done; save(); if (s.done) { ui.screen = null; } },
@@ -716,8 +976,10 @@ const A = {
   endquiz() { ui.screen = null; ui.quiz = null; ui.tab = "hoje"; },
   retryquiz() { const sid = ui.quiz.sid; ui.arg = sid; ui.screen = "session"; ui.quiz = null; startQuiz(sid); },
   stop() { if (ctl) ctl.abort(); idle(); },
+  copt(d) { const o = ui.confirm && ui.confirm.opts && ui.confirm.opts[+d.i]; ui.confirm = null; if (o && o.fn) return o.fn(); },
   cno() { ui.confirm = null; },
   cyes() { const f = ui.confirm && ui.confirm.yes; ui.confirm = null; if (f) return f(); },
+  clearlog() { LOG = []; saveLog(); },
   export() { ui.form.io = ui.form.io === "export" ? null : "export"; },
   import() { ui.form.io = ui.form.io === "import" ? null : "import"; },
   doimport() { try { const s = JSON.parse($("#io").value); if (!s || !Array.isArray(s.kids)) throw 0; confirmBox("Substituir os dados deste aparelho pelos do código?", () => { S = s; S.settings = S.settings || { minutes: 45, weekends: true }; save(); ui.form = {}; toast("Dados restaurados."); }, "Substituir"); } catch (e) { toast("Esse código não é válido."); } },
@@ -729,7 +991,10 @@ document.addEventListener("click", ev => {
 });
 document.addEventListener("change", ev => {
   const c = ev.target.dataset && ev.target.dataset.c; if (!c) return;
-  if (c === "minutes") S.settings.minutes = +ev.target.value; if (c === "weekends") S.settings.weekends = ev.target.checked; save();
+  if (c === "minutes") S.settings.minutes = +ev.target.value;
+  if (c === "weekends") S.settings.weekends = ev.target.checked;
+  if (c === "pace") { const kk = S.kids.find(x => x.id === ev.target.dataset.id); if (kk) kk.pace = PACE[ev.target.value] ? ev.target.value : "normal"; }
+  save(); if (c === "pace") render();
 });
 document.addEventListener("focusin", ev => { if (ev.target.id === "io" && ev.target.readOnly) ev.target.select(); });
 render();
