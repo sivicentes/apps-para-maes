@@ -791,6 +791,38 @@ function finishQuiz() {
 }
 
 /* ============ telas ============ */
+/* ============ compressao dos codigos ============ */
+/* O navegador ja sabe comprimir (CompressionStream). O codigo sai com o
+   prefixo SDP1: para o app reconhecer. Codigo antigo (texto puro, comecando
+   com "{") continua sendo aceito, entao nada do que ja foi salvo quebra. */
+const MARCA = "SDP1:";
+const b64enc = u8 => { let s = ""; const C = 0x8000; for (let i = 0; i < u8.length; i += C) s += String.fromCharCode.apply(null, u8.subarray(i, i + C)); return btoa(s); };
+const b64dec = b => { const s = atob(String(b).replace(/\s+/g, "")); const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; };
+async function zipar(txt) {
+  if (typeof CompressionStream === "undefined") return txt;
+  try {
+    const cs = new CompressionStream("gzip"), w = cs.writable.getWriter();
+    w.write(new TextEncoder().encode(txt)); w.close();
+    const buf = await new Response(cs.readable).arrayBuffer();
+    const out = MARCA + b64enc(new Uint8Array(buf));
+    return out.length < txt.length ? out : txt;
+  } catch (e) { return txt; }
+}
+async function dezipar(txt) {
+  txt = String(txt || "").trim();
+  if (txt.slice(0, MARCA.length) !== MARCA) return txt;
+  const ds = new DecompressionStream("gzip"), w = ds.writable.getWriter();
+  w.write(b64dec(txt.slice(MARCA.length))); w.close();
+  return await new Response(ds.readable).text();
+}
+/* le um codigo colado e diz o que ele e */
+async function lerCodigo(raw) {
+  const txt = await dezipar(raw);
+  const o = JSON.parse(txt);
+  if (o && Array.isArray(o.kids)) return { tipo: "copia", dados: o };
+  if (o && o.turma === 1 && Array.isArray(o.provas)) return { tipo: "turma", dados: o };
+  throw new Error("desconhecido");
+}
 /* ============ papel do aparelho e transferencia entre aparelhos ============ */
 /* Fica fora da copia de seguranca: cada aparelho tem o seu. */
 const DKEY = "semana-de-prova:aparelho";
@@ -872,12 +904,37 @@ function aiBanner() {
 }
 function vWelcome() {
   const f = ui.form;
+  if (f.passo === "codigo") return vCodigo();
+  if (f.passo === "novo" || S.kids.length) return vNovaCrianca();
   return '<h1>Bora estudar para a <span class="mk">semana de prova</span>?</h1><p class="muted">Você envia o comunicado da escola e as páginas do livro. O app monta o roteiro de cada dia e faz perguntas para treinar.</p>' +
-    '<div class="card"><h2>Quem vai estudar?</h2><label for="kname">Nome ou apelido</label><input id="kname" type="text" maxlength="20" autocomplete="off" value="' + esc(f.name || "") + '" placeholder="Ex.: Lulu">' +
+    '<button class="hub" data-a="wnovo" style="margin-top:16px"><span class="ico">👋</span><span class="grow"><span class="tt">Primeira vez aqui</span><span class="sub">Cadastrar quem vai estudar</span></span><span class="chev">›</span></button>' +
+    '<button class="hub" data-a="wcodigo"><span class="ico">📋</span><span class="grow"><span class="tt">Já tenho um código</span><span class="sub">De outro aparelho meu, ou de uma mãe da turma</span></span><span class="chev">›</span></button>' +
+    '<p class="small muted" style="margin-top:18px">Tudo fica salvo só neste aparelho. O nome da criança nunca é enviado para a IA.</p>';
+}
+function vNovaCrianca() {
+  const f = ui.form, primeira = !S.kids.length;
+  return (primeira ? '<button class="link" data-a="wback">‹ Voltar</button>' : "") +
+    '<h1>' + (primeira ? "Quem vai estudar?" : "Mais uma criança") + "</h1>" +
+    '<div class="card"><label for="kname">Nome ou apelido</label><input id="kname" type="text" maxlength="20" autocomplete="off" value="' + esc(f.name || "") + '" placeholder="Ex.: Benja">' +
     '<label for="kgrade">Ano na escola</label><select id="kgrade">' + SERIES.map(s => "<option" + ((f.grade || "5º ano") === s ? " selected" : "") + ">" + s + "</option>").join("") + "</select>" +
-    '<label for="kpace">Ritmo de estudo</label><select id="kpace">' + PACEK.map(pk => '<option value="' + pk + '"' + ((f.pace || "normal") === pk ? " selected" : "") + ">" + PACE[pk].label + " \u2014 " + PACE[pk].dica + "</option>").join("") + "</select>" +
-    '<div class="btns"><button class="btn pri block" data-a="savekid">Come\u00e7ar</button>' + (S.kids.length ? '<button class="btn ghost block" data-a="back">Voltar</button>' : "") + "</div></div>" +
-    '<p class="small muted">Tudo fica salvo só neste aparelho. O nome não é enviado para a IA.</p>';
+    '<label for="kpace">Ritmo de estudo</label><select id="kpace">' + PACEK.map(pk => '<option value="' + pk + '"' + ((f.pace || "normal") === pk ? " selected" : "") + ">" + PACE[pk].label + " — " + PACE[pk].dica + "</option>").join("") + "</select>" +
+    '<div class="acts"><button class="btn pri" data-a="savekid">' + (primeira ? "Começar" : "Adicionar") + "</button>" + (S.kids.length ? '<button class="btn ghost" data-a="back">Voltar</button>' : "") + "</div></div>" +
+    '<p class="small muted">Tudo fica salvo só neste aparelho. O nome nunca é enviado para a IA.</p>';
+}
+function vCodigo() {
+  const f = ui.form;
+  let h = '<button class="link" data-a="wback">‹ Voltar</button><h1>Já tenho um <span class="mk">código</span></h1>' +
+    '<p class="muted">Cole aqui o que você recebeu. Pode ser a cópia de outro aparelho seu, ou o código da turma que outra mãe mandou — o app reconhece sozinho.</p>';
+  h += '<div class="card"><label for="wio">Código</label><textarea id="wio" style="min-height:130px" placeholder="Cole o código aqui">' + esc(f.wio || "") + "</textarea>";
+  if (f.pedeNome) {
+    h += '<div class="note"><p class="small"><b>É um código de turma.</b> Ele traz as provas, o material e o roteiro da sala. Falta dizer quem vai estudar — isso fica só no seu aparelho.</p></div>' +
+      '<label for="kname">Nome ou apelido</label><input id="kname" type="text" maxlength="20" autocomplete="off" value="' + esc(f.name || "") + '" placeholder="Ex.: Benja">' +
+      '<label for="kgrade">Ano na escola</label><select id="kgrade">' + SERIES.map(s => "<option" + ((f.grade || f.serieSugerida || "5º ano") === s ? " selected" : "") + ">" + s + "</option>").join("") + "</select>" +
+      '<label for="kpace">Ritmo de estudo</label><select id="kpace">' + PACEK.map(pk => '<option value="' + pk + '"' + ((f.pace || "normal") === pk ? " selected" : "") + ">" + PACE[pk].label + " — " + PACE[pk].dica + "</option>").join("") + "</select>";
+  }
+  h += '<div class="acts"><button class="btn pri" data-a="wgo">' + (f.pedeNome ? "Começar a estudar" : "Continuar") + "</button></div></div>";
+  h += '<p class="small muted">A chave da IA nunca vem no código. Se você tiver uma, cola depois em Pais.</p>';
+  return h;
 }
 function ruler() {
   const k = kid(), t = today(); let end = addDays(t, 6);
@@ -1212,13 +1269,13 @@ function render() {
   if (ui.confirm) h += '<div class="veil" role="alertdialog" aria-label="Confirmar"><div class="card"><h2>' + esc(ui.confirm.msg) + '</h2>' + (ui.confirm.sub ? '<p class="small" style="text-align:left">' + esc(ui.confirm.sub) + "</p>" : "") + '<div class="btns" style="justify-content:center;flex-direction:column">' + (ui.confirm.opts ? ui.confirm.opts.map((o, i) => '<button class="btn ' + (o.pri ? "pri" : "") + ' block" data-a="copt" data-i="' + i + '">' + esc(o.label) + "</button>").join("") + '<button class="btn ghost block" data-a="cno">Cancelar</button>' : '<button class="btn ghost" data-a="cno">Cancelar</button><button class="btn pri" data-a="cyes">' + esc(ui.confirm.label || "Sim") + "</button>") + "</div></div></div>";
   $("#app").innerHTML = h;
 }
-function keepForm() { document.querySelectorAll("#app input[id],#app textarea[id],#app select[id]").forEach(el => { const m = { kname: "name", kgrade: "grade", kpace: "pace", ntext: "ntext", esub: "subject", edate: "date", etop: "topics", epag: "pages", elinks: "links", ptext: "ptext", msis: "msis", mvol: "mvol", medi: "medi" }[el.id]; if (m) ui.form[m] = el.value; }); }
+function keepForm() { document.querySelectorAll("#app input[id],#app textarea[id],#app select[id]").forEach(el => { const m = { kname: "name", kgrade: "grade", kpace: "pace", wio: "wio", ntext: "ntext", esub: "subject", edate: "date", etop: "topics", epag: "pages", elinks: "links", ptext: "ptext", msis: "msis", mvol: "mvol", medi: "medi" }[el.id]; if (m) ui.form[m] = el.value; }); }
 
 /* ============ ações ============ */
 const A = {
   tab(d) { ui.tab = d.t; ui.screen = null; ui.form = {}; if (d.t !== "pais") ui.riddle = null; },
   kid(d) { S.active = d.id; save(); ui.screen = null; },
-  newkid() { ui.form = {}; ui.screen = "welcome"; },
+  newkid() { ui.form = { passo: "novo" }; ui.screen = "welcome"; },
   back() { ui.screen = null; ui.form = {}; if (ctl) ctl.abort(); ui.explainLive = ""; },
   savekid() { const name = (ui.form.name || "").trim(); if (!name) return toast("Escreva o nome ou apelido."); const k = { id: uid(), name: name.slice(0, 20), grade: ui.form.grade || "5º ano", pace: PACE[ui.form.pace] ? ui.form.pace : "normal", exams: [], sessions: [], planAt: null }; S.kids.push(k); S.active = k.id; save(); ui.screen = null; ui.form = {}; ui.tab = "provas"; },
   newweek() { const k = kid(); const nq = k.sessions.filter(s => s.score).length; chooseBox("Apagar a semana de " + k.name + "?", [
@@ -1280,25 +1337,43 @@ const A = {
   pavancado() { ui.screen = "pavancado"; ui.form = {}; window.scrollTo(0, 0); },
   ppais() { ui.screen = null; ui.form = {}; window.scrollTo(0, 0); },
   examdet(d) { ui.arg = d.id; ui.screen = "examdet"; window.scrollTo(0, 0); },
-  iocopy() { copiar(JSON.stringify(S), "Código copiado! Mande para você mesma e cole no outro aparelho."); },
-  iolite() { copiar(estadoLeve(), "Cópia leve copiada! No outro aparelho, reenvie as fotos das páginas."); },
-  ioshare() { compartilhar(JSON.stringify(S), "Semana de Prova — cópia de segurança"); },
+  async iocopy() { copiar(await zipar(JSON.stringify(S)), "Código copiado! Mande para você mesma e cole no outro aparelho."); },
+  async iolite() { copiar(await zipar(estadoLeve()), "Cópia leve copiada! No outro aparelho, reenvie as fotos das páginas."); },
+  async ioshare() { compartilhar(await zipar(JSON.stringify(S)), "Semana de Prova — cópia de segurança"); },
   gshow() { ui.showKey = ui.showKey === "g" ? null : "g"; },
   rshow() { ui.showKey = ui.showKey === "r" ? null : "r"; },
   gcopy() { copiar(G.key || "", "Chave do Gemini copiada. Cole no outro aparelho, em Pais."); },
   rcopy() { copiar(R.key || "", "Chave do Groq copiada."); },
-  tcopy() { copiar(codigoTurma(true), "Código da turma copiado! Mande no grupo da sala."); },
-  tcopylite() { copiar(codigoTurma(false), "Copiado sem o material lido."); },
+  async tcopy() { copiar(await zipar(codigoTurma(true)), "Código da turma copiado! Mande no grupo da sala."); },
+  async tcopylite() { copiar(await zipar(codigoTurma(false)), "Copiado sem o material lido."); },
   tpaste() { ui.form.turma = ui.form.turma === "paste" ? null : "paste"; },
-  tdoimport() { let o; try { o = JSON.parse($("#tio").value); } catch (e) { return toast("Esse código não é válido."); }
+  async tdoimport() { let o; try { o = (await lerCodigo($("#tio").value)).dados; } catch (e) { render(); return toast("Esse código não é válido."); }
     if (!o || o.turma !== 1) return toast("Esse código não é de turma. O código da turma começa com {\"turma\":1.");
     try { const r = importarTurma(o); ui.form.turma = null;
-      toast(r.novas + " prova(s) nova(s)" + (r.somadas ? ", " + r.somadas + " já existia(m)" : "") + (r.comRot ? ", " + r.comRot + " com roteiro pronto" : "") + (r.comMat ? ", " + r.comMat + " com material" : "") + "."); }
+      render(); toast(r.novas + " prova(s) nova(s)" + (r.somadas ? ", " + r.somadas + " já existia(m)" : "") + (r.comRot ? ", " + r.comRot + " com roteiro pronto" : "") + (r.comMat ? ", " + r.comMat + " com material" : "") + "."); }
     catch (e) { toast("Não consegui ler esse código."); } },
+  wnovo() { ui.form = { passo: "novo" }; },
+  wcodigo() { ui.form = { passo: "codigo" }; },
+  wback() { ui.form = {}; },
+  async wgo() {
+    const raw = ($("#wio") ? $("#wio").value : ui.form.wio || "").trim();
+    if (raw.length < 10) return toast("Cole o código primeiro.");
+    let r; try { r = await lerCodigo(raw); } catch (e) { return toast("Não consegui ler esse código. Confira se copiou inteiro."); }
+    if (r.tipo === "copia") { S = r.dados; S.settings = S.settings || { minutes: 45, weekends: true }; save(); ui.screen = null; ui.form = {}; ui.tab = "hoje"; render(); return toast("Tudo restaurado neste aparelho!"); }
+    if (!kid()) {
+      if (!ui.form.pedeNome) { ui.form = { passo: "codigo", wio: raw, pedeNome: true, serieSugerida: r.dados.serie || "" }; render(); return; }
+      const nome = ($("#kname") ? $("#kname").value : ui.form.name || "").trim(); if (!nome) return toast("Escreva o nome ou apelido da criança.");
+      const serie = $("#kgrade") ? $("#kgrade").value : ui.form.grade, ritmo = $("#kpace") ? $("#kpace").value : ui.form.pace;
+      const nk = { id: uid(), name: nome.slice(0, 20), grade: serie || r.dados.serie || "5º ano", pace: PACE[ritmo] ? ritmo : "normal", exams: [], sessions: [], planAt: null };
+      S.kids.push(nk); S.active = nk.id; save();
+    }
+    const res = importarTurma(r.dados); ui.screen = null; ui.form = {}; ui.tab = "hoje"; render();
+    toast(res.novas + " prova(s) chegaram" + (res.comRot ? " com o roteiro pronto" : "") + ". Bons estudos!");
+  },
   clearlog() { LOG = []; saveLog(); },
   export() { ui.form.io = ui.form.io === "export" ? null : "export"; },
   import() { ui.form.io = ui.form.io === "import" ? null : "import"; },
-  doimport() { let s2; try { s2 = JSON.parse($("#io").value); if (!s2 || !Array.isArray(s2.kids)) throw 0; } catch (e) { return toast("Esse c\u00f3digo n\u00e3o \u00e9 v\u00e1lido."); }
+  async doimport() { let s2; try { const rr = await lerCodigo($("#io").value); if (rr.tipo !== "copia") throw 0; s2 = rr.dados; } catch (e) { render(); return toast("Esse c\u00f3digo n\u00e3o \u00e9 v\u00e1lido. Se for c\u00f3digo de turma, use Provas e material."); }
     const nomes = s2.kids.map(x => x.name).join(", ") || "ningu\u00e9m";
     const atual = S.kids.map(x => x.name).join(", ") || "ningu\u00e9m";
     chooseBox("Restaurar a c\u00f3pia?", [

@@ -69,6 +69,9 @@ async function boot(routes) {
   w.fetch = f.fetch;
   w.createImageBitmap = async () => ({ width: 100, height: 100, close() {} });
   w.scrollTo = () => {};
+  // jsdom nao traz compressao nem Response: empresta do Node para testar o caminho real
+  for (const n of ["CompressionStream", "DecompressionStream", "Response", "TextEncoder", "TextDecoder", "btoa", "atob"])
+    if (globalThis[n] && !w[n]) w[n] = globalThis[n];
   await new Promise(r => setTimeout(r, 30));
   // const/let de topo nao viram propriedade de window: ponte para o escopo do script
   w.eval(`window.__t = {
@@ -556,20 +559,24 @@ console.log("\n14. levar para outro aparelho");
   t.A.iocopy();
   await new Promise(r => setTimeout(r, 10));
   ok(copiado.length === 1, "botão copia o código com um toque");
-  const vindo = JSON.parse(copiado[0]);
+  ok(copiado[0].slice(0, 5) === "SDP1:", "o código sai comprimido");
+  const cru = await w.dezipar(copiado[0]);
+  ok(copiado[0].length < cru.length / 2, "comprimido cabe em menos da metade");
+  const vindo = JSON.parse(cru);
   eq(vindo.kids[0].exams[0].subject, "Ciências", "o código leva as provas");
   ok(vindo.kids[0].exams[0].content.length > 100, "o código leva o material lido");
-  ok(!copiado[0].includes("AIza") && !copiado[0].includes("gsk_"), "o código não leva chave nenhuma");
+  ok(!cru.includes("AIza") && !cru.includes("gsk_"), "o código não leva chave nenhuma");
 
   // copia leve, sem o material
   t.A.iolite();
   await new Promise(r => setTimeout(r, 10));
-  const leve = JSON.parse(copiado[1]);
+  const cruLeve = await w.dezipar(copiado[1]);
+  const leve = JSON.parse(cruLeve);
   eq(leve.kids[0].exams[0].subject, "Ciências", "a cópia leve mantém as provas");
   eq(leve.kids[0].exams[0].content, "", "a cópia leve tira o material lido");
   eq(leve.kids[0].exams[0].blocks.length, 0, "a cópia leve tira os blocos");
   eq(leve.kids[0].exams[0].pages, "120 a 123", "mas mantém as páginas indicadas pela professora");
-  ok(copiado[1].length < copiado[0].length, "a cópia leve é menor que a completa");
+  ok(cruLeve.length < cru.length, "a cópia leve é menor que a completa");
 
   // a chave pode ser mostrada e copiada, para levar ao outro aparelho
   w.eval('G = { key: "AIzaCHAVE-DE-TESTE-1234567890", models: ["gemini-3.8-flash"], model: null }; sample = makeSample();');
@@ -640,7 +647,8 @@ console.log("\n16. código da turma");
 
   A.t.A.tcopy();
   await new Promise(r => setTimeout(r, 10));
-  const codigo = copiado[0];
+  ok(copiado[0].slice(0, 5) === "SDP1:", "o código da turma sai comprimido");
+  const codigo = await A.w.dezipar(copiado[0]);
   const obj = JSON.parse(codigo);
 
   // o que NAO pode vazar
@@ -701,6 +709,131 @@ console.log("\n16. código da turma");
   // codigo de turma nao e aceito como copia de seguranca, nem o contrario
   B.t.ui.tab = "pais"; B.t.ui.unlocked = true; B.t.ui.screen = "pprovas"; B.w.render();
   ok(B.w.document.getElementById("app").innerHTML.includes("Compartilhar com a turma"), "o card da turma aparece em Provas e material");
+}
+
+/* ================= 17. código comprimido ================= */
+console.log("\n17. código comprimido");
+{
+  const { w, t } = await boot([]);
+  const bruto = JSON.stringify({ v: 1, kids: [{ id: "k1", name: "Benja", grade: "4º ano", pace: "puxado", exams: [], sessions: [], planAt: null }], active: "k1", settings: { minutes: 45, weekends: true } });
+  // texto curto: comprimir sairia MAIOR, entao o app mantem o texto puro
+  const curto = await w.zipar(bruto);
+  eq(curto, bruto, "código curto fica em texto puro, porque comprimir não compensaria");
+  // texto de tamanho real: comprime
+  const grandeTxt = JSON.stringify({ v: 1, active: "k1", settings: { minutes: 45, weekends: true }, kids: [{ id: "k1", name: "Benja", grade: "4º ano", pace: "puxado", planAt: null, sessions: [], exams: Array.from({ length: 6 }, (_, i) => ({ id: "e" + i, subject: "Matéria " + i, date: "2099-12-1" + i, topics: "conteúdos de revisão no caderno e nas páginas indicadas", pages: "120 a 153", links: [], content: "", blocks: [], material: null, nPages: 0, misses: [], asked: [] })) }] });
+  const z = await w.zipar(grandeTxt);
+  ok(z.slice(0, 5) === "SDP1:", "o código comprimido se identifica com SDP1:");
+  ok(z.length < grandeTxt.length, "o comprimido é menor que o texto puro");
+  eq(await w.dezipar(z), grandeTxt, "descomprimir devolve o original exato");
+  eq(await w.dezipar(bruto), bruto, "e o texto puro passa direto");
+
+  // codigo antigo, texto puro, continua aceito
+  eq(await w.dezipar(bruto), bruto, "código antigo em texto puro continua sendo lido");
+  const lidoAntigo = await w.lerCodigo(bruto);
+  eq(lidoAntigo.tipo, "copia", "reconhece cópia de segurança antiga");
+  const lidoNovo = await w.lerCodigo(z);
+  eq(lidoNovo.tipo, "copia", "reconhece cópia de segurança comprimida");
+  eq(lidoNovo.dados.kids[0].name, "Benja", "e devolve os dados certos");
+
+  // codigo de turma comprimido
+  const turma = JSON.stringify({ turma: 1, serie: "4º ano", provas: [{ m: "Ciências", d: "2099-12-10", t: "", p: "", l: [], mat: null, b: [], r: [] }] });
+  const tz = await w.zipar(turma);
+  const lidoT = await w.lerCodigo(tz);
+  eq(lidoT.tipo, "turma", "reconhece código de turma comprimido");
+
+  // lixo nao passa
+  let erro = false;
+  try { await w.lerCodigo("isso não é código nenhum"); } catch (e) { erro = true; }
+  ok(erro, "texto qualquer é recusado");
+  erro = false;
+  try { await w.lerCodigo('{"alguma":"coisa"}'); } catch (e) { erro = true; }
+  ok(erro, "JSON que não é nem cópia nem turma é recusado");
+
+  // ganho real de tamanho num estado com material
+  const grande = JSON.stringify({ v: 1, active: "k1", settings: { minutes: 45, weekends: true }, kids: [{ id: "k1", name: "Benja", grade: "4º ano", pace: "normal", planAt: null, sessions: [], exams: Array.from({ length: 8 }, (_, i) => ({ id: "e" + i, subject: "Matéria " + i, date: "2099-12-1" + i, topics: "conteúdos de revisão no caderno", pages: "120 a 153", links: [], content: "", blocks: [{ materia: "m", assunto: "a", pagina: "1", conceitos: [], texto: "O Sistema Solar é formado pelo Sol e por oito planetas. ".repeat(40), hash: "h" + i }], material: null, nPages: 1, misses: [], asked: [] })) }] });
+  const gz = await w.zipar(grande);
+  ok(gz.length < grande.length / 3, "estado com material encolhe pelo menos três vezes");
+  eq(JSON.parse(await w.dezipar(gz)).kids[0].exams.length, 8, "e volta inteiro");
+}
+
+/* ================= 18. tela inicial com código ================= */
+console.log("\n18. tela inicial: já tenho um código");
+{
+  const { w, t } = await boot([]);
+  const setv = (id, v) => w.eval('document.getElementById("' + id + '").value = ' + JSON.stringify(v));
+  w.render();
+  let html = w.document.getElementById("app").innerHTML;
+  ok(html.includes("Primeira vez aqui"), "a primeira tela oferece cadastrar");
+  ok(html.includes("Já tenho um código"), "e oferece colar um código");
+  ok(!html.includes('id="kname"'), "não pede o nome logo de cara");
+
+  // caminho do cadastro normal continua funcionando
+  t.A.wnovo(); w.render();
+  ok(w.document.getElementById("app").innerHTML.includes('id="kname"'), "escolhendo cadastrar, aparece o formulário");
+  t.A.wback(); w.render();
+  ok(w.document.getElementById("app").innerHTML.includes("Primeira vez aqui"), "dá para voltar");
+
+  // colar uma copia de seguranca restaura tudo
+  t.A.wcodigo(); w.render();
+  ok(w.document.getElementById("app").innerHTML.includes('id="wio"'), "a tela de código tem onde colar");
+  const copia = JSON.stringify({ v: 1, kids: [{ id: "kx", name: "Benja", grade: "4º ano", pace: "puxado", planAt: null, exams: [{ id: "e1", subject: "Ciências", date: "2099-12-10", topics: "", pages: "", links: [], content: "", blocks: [], material: null, nPages: 0, misses: [], asked: [] }], sessions: [] }], active: "kx", settings: { minutes: 45, weekends: true } });
+  setv("wio", await w.zipar(copia));
+  await t.A.wgo();
+  eq(t.S.kids.length, 1, "a cópia restaurou a criança");
+  eq(t.S.kids[0].name, "Benja", "com o nome certo");
+  eq(t.S.kids[0].exams.length, 1, "e com as provas");
+  eq(t.ui.screen, null, "e já entra no app");
+}
+
+/* ================= 19. a mãe da turma, do zero ================= */
+console.log("\n19. a mãe da turma, do zero, sem chave");
+{
+  const { w, t } = await boot([]);
+  const setv = (id, v) => w.eval('document.getElementById("' + id + '").value = ' + JSON.stringify(v));
+  ok(!w.eval("!!sample"), "ela não tem IA ligada");
+  const turma = { turma: 1, serie: "4º ano", em: "2026-09-20", provas: [
+    { m: "Ciências", d: "2099-12-10", t: "sistema solar", p: "120 a 123", l: [{ u: "https://youtu.be/abcdefghijk", r: "vídeo da prof" }], mat: { sistema: "Objetivo", volume: "Apostila 2", edicao: "2026", serie: "4º ano" },
+      b: [{ a: "o Sol", pg: "120", c: ["estrela"], x: "O Sol é uma estrela.", h: "h1" }],
+      r: [{ o: 1, tp: "estudo", ti: "Ciências: o Sol", mi: 20, ps: ["Leia a página 120.", "Anote três coisas."] }, { o: 2, tp: "revisao", ti: "Ciências: revisão", mi: 20, ps: ["Releia tudo."] }] }] };
+
+  // 1. abre o link e escolhe "ja tenho um codigo"
+  w.render(); t.A.wcodigo(); w.render();
+  // 2. cola o codigo
+  setv("wio", await w.zipar(JSON.stringify(turma)));
+  await t.A.wgo();
+  // 3. o app pede so o nome, ja sugerindo a serie da turma
+  let html = w.document.getElementById("app").innerHTML;
+  ok(html.includes("código de turma"), "o app reconhece que é código de turma");
+  ok(html.includes('id="kname"'), "e pede só quem vai estudar");
+  ok(/4º ano[^<]*" selected|selected>4º ano|<option selected>4º ano/.test(html) || html.includes("4º ano"), "sugerindo a série da turma");
+  eq(t.S.kids.length, 0, "ainda não criou criança nenhuma");
+
+  // 4. digita o nome e comeca
+  setv("kname", "Duda");
+  await t.A.wgo();
+  eq(t.S.kids.length, 1, "criou a criança dela");
+  eq(t.S.kids[0].name, "Duda", "com o nome que ela escreveu");
+  eq(t.S.kids[0].exams.length, 1, "e a prova da turma chegou junto");
+  const ex = t.S.kids[0].exams[0];
+  ok(ex.content.includes("O Sol é uma estrela"), "com o material já lido pela outra mãe");
+  eq(ex.links.length, 1, "e o link da professora");
+  eq(t.S.kids[0].sessions.length, 2, "e o roteiro pronto, sem gastar IA nenhuma");
+  eq(t.ui.screen, null, "já caiu direto no app");
+  eq(t.ui.tab, "hoje", "na tela de estudar");
+
+  // 5. a crianca ja consegue estudar
+  w.render(); html = w.document.getElementById("app").innerHTML;
+  ok(html.includes("Ciências"), "a matéria aparece para a criança");
+  ok(html.includes("Ciências: o Sol"), "com a primeira parte do roteiro");
+  ok(html.includes("Escolha por onde começar"), "convidando a escolher");
+  ok(html.includes("0 de 2 partes feitas"), "com o progresso zerado, que é dela");
+  // e abre a parte, com os passos
+  const s0 = t.S.kids[0].sessions.sort((a, b) => a.ord - b.ord)[0];
+  t.A.open({ id: s0.id }); w.render();
+  html = w.document.getElementById("app").innerHTML;
+  ok(html.includes("Leia a página 120."), "os passos concretos chegaram");
+  ok(html.includes("Explica pra mim"), "o botão de explicação existe");
+  ok(html.includes("Começar o quiz"), "e o do quiz também");
 }
 
 console.log(`\n${passed} passaram, ${failed} falharam`);

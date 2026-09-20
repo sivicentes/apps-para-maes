@@ -29,9 +29,15 @@ O Semana de Prova pega todo esse material e transforma em um plano simples: o qu
 ## 4. Jornada da mãe
 
 ### 4.1 Primeira vez
-1. Abre o link do app. **[hoje]**
-2. Cadastra a criança: apelido e ano escolar. Pode cadastrar mais de uma; cada criança tem suas provas, seu roteiro e seu progresso, e a troca é por um botão com o nome no topo. **[hoje]**
-3. Liga a inteligência artificial colando a chave do Gemini na aba Pais **[hoje, só no meu uso]**. Opcionalmente cola também uma chave do Groq, uma segunda IA que cuida só do roteiro, da explicação e do quiz e deixa essas três partes bem mais rápidas; ler foto, PDF e vídeo continua sempre no Gemini, que é o único que faz isso **[hoje, só no meu uso]**. Para as outras mães nenhum desses passos existirá: elas digitam o código da turma e pronto **[planejado]**.
+
+Ao abrir o link, o app oferece duas saídas, e não pede nada antes disso: **[hoje]**
+
+1. **Primeira vez aqui** — cadastra quem vai estudar: apelido, ano escolar e ritmo. Pode cadastrar mais de uma criança; cada uma tem suas provas, seu roteiro e seu progresso.
+2. **Já tenho um código** — cola um código recebido. É um campo só, e o app reconhece sozinho o que chegou: se for a cópia de outro aparelho seu, restaura tudo; se for o código da turma, pede só o nome da criança e traz as provas, o material e o roteiro da sala.
+
+Depois, quem quiser ligar a IA cola a chave do Gemini na aba Pais **[hoje, só no meu uso]**, e opcionalmente a do Groq, que deixa roteiro, explicação e quiz mais rápidos. Para as outras mães esse passo não existirá: elas digitam o código da turma e pronto **[planejado]**.
+
+Os códigos são comprimidos pelo próprio navegador, o que os deixa cerca de dez vezes menores e faz caberem numa mensagem. Códigos antigos, em texto puro, continuam sendo aceitos. **[hoje]**
 
 ### 4.2 Montando a semana
 1. Na aba Provas, toca em "Ler o comunicado" e junta tudo o que recebeu: foto, print, PDF, Word (.docx) ou texto colado de mensagem. Pode juntar arquivos de várias professoras e ler de uma vez. **[hoje]**
