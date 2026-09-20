@@ -31,13 +31,14 @@ O Semana de Prova pega todo esse material e transforma em um plano simples: o qu
 ### 4.1 Primeira vez
 1. Abre o link do app. **[hoje]**
 2. Cadastra a criança: apelido e ano escolar. Pode cadastrar mais de uma; cada criança tem suas provas, seu roteiro e seu progresso, e a troca é por um botão com o nome no topo. **[hoje]**
-3. Liga a inteligência artificial colando a chave do Gemini na aba Pais **[hoje, só no meu uso]**. Para as outras mães esse passo não existirá: elas digitam o código da turma e pronto **[planejado]**.
+3. Liga a inteligência artificial colando a chave do Gemini na aba Pais **[hoje, só no meu uso]**. Opcionalmente cola também uma chave do Groq, uma segunda IA que cuida só do roteiro, da explicação e do quiz e deixa essas três partes bem mais rápidas; ler foto, PDF e vídeo continua sempre no Gemini, que é o único que faz isso **[hoje, só no meu uso]**. Para as outras mães nenhum desses passos existirá: elas digitam o código da turma e pronto **[planejado]**.
 
 ### 4.2 Montando a semana
 1. Na aba Provas, toca em "Ler o comunicado" e junta tudo o que recebeu: foto, print, PDF, Word (.docx) ou texto colado de mensagem. Pode juntar arquivos de várias professoras e ler de uma vez. **[hoje]**
 2. O app extrai cada prova: matéria, data, o que cai, páginas indicadas e links que a professora mandou (inclusive links escondidos em "clique aqui"). **[hoje]**
 3. A mãe confere, principalmente as datas, e corrige em "Editar" se precisar. Também pode adicionar uma prova na mão. **[hoje]**
 4. Em cada prova, envia o material de estudo: fotos das páginas (uma página por foto, com boa luz), PDF, Word ou texto colado. O app lê e guarda um resumo condensado do conteúdo, não a foto. **[hoje]**
+4a. Ao ler as páginas, o app também identifica de que material elas vieram (sistema ou editora, volume, edição) e separa o conteúdo em blocos por assunto, guardando a página apenas como referência de onde aquilo está. A mãe vê o material identificado no cartão da prova e pode corrigi-lo em "Editar". Isso é o que vai permitir, na fase de turmas, reaproveitar o conteúdo já lido por outra mãe sem processar tudo de novo. **[hoje]**
 5. Se a professora indicou vídeo do YouTube, toca em "Ler este vídeo para o quiz". A IA assiste e o resumo do vídeo entra no material da prova. Só funciona com vídeo público. **[hoje, sem teste real ainda]**
 6. Monta o roteiro: de todas as provas de uma vez, ou de uma prova só ("Montar roteiro desta prova"), indo aos poucos. Cada cartão mostra se a prova está "no roteiro" ou "fora do roteiro". **[hoje]**
 
@@ -45,11 +46,22 @@ O Semana de Prova pega todo esse material e transforma em um plano simples: o qu
 - Chegou material novo: envia na prova correspondente. O conteúdo se soma ao anterior e já vale para explicações e quizzes. Se mudar muito, refaz o roteiro daquela prova; o que a criança já concluiu continua marcado. **[hoje]**
 - Chegou comunicado novo: lê de novo. Prova repetida (mesma matéria e data) não duplica; links novos são somados. Mudança de data se corrige em "Editar". **[hoje]**
 - Na aba Pais, acompanha por matéria: sessões feitas, percentual de acertos no quiz e "pontos de atenção", que são os assuntos em que a criança errou. **[hoje]**
+- Ajusta o **ritmo de cada filho** (calmo, normal ou puxado), que define quanto conteúdo entra em cada parte. É o ajuste certo quando a criança precisa de mais tempo para absorver. **[hoje]**
 - Ajusta o tempo máximo de estudo por dia (30, 45, 60 ou 90 minutos) e se estuda no fim de semana. **[hoje]**
+- No **diário técnico** vê o que a IA fez: qual IA, qual modelo, quanto demorou e o erro exato quando algo falha. **[hoje]**
 - Faz cópia de segurança por código, para levar os dados a outro aparelho. A chave da IA nunca entra nessa cópia. **[hoje]**
 - Ao fim da semana, usa "Nova semana de provas" para limpar e recomeçar. **[hoje]**
 
 ### 4.4 Com a turma [planejado]
+
+O compartilhamento tem duas camadas, com chaves diferentes, porque são coisas de natureza diferente:
+
+- **As provas são da turma.** Quais matérias, que dia, o que cai: isso muda de unidade para unidade e fica atrás do código de acesso. O nome da escola é só rótulo para a mãe conferir que entrou no lugar certo, nunca a chave — por isso "Colégio Objetivo", que existe em centenas de unidades, não gera confusão.
+- **O material não é da escola.** A apostila do 5º ano do Objetivo é a mesma em todas as unidades do Brasil. O conteúdo lido fica num banco próprio, organizado por matéria e assunto, com a identificação do material (sistema, volume, edição) e a página como referência de onde encontrar. Assim a mãe de uma cidade aproveita o que a mãe de outra já fotografou, e o banco vai ficando mais rico a cada leitura em vez de começar do zero a cada turma.
+- A edição entra na identificação porque páginas mudam de lugar entre edições. Cada bloco guarda também uma impressão digital do texto, que serve para reconhecer conteúdo repetido e para conferir se o que veio do banco bate com a página da criança.
+- A mãe só precisa fotografar quando aquele material ainda não existe no banco, ou quando alguém marcou que o conteúdo guardado está errado. Sem isso, vem pronto.
+- Quem achar um conteúdo errado pode reportar; aquele trecho é lido de novo e substituído, com registro de quem alterou por último.
+
 - A primeira mãe cria a turma (escola, ano e sala) e recebe um código para mandar no grupo da sala.
 - Tudo o que ela cadastrar e a IA processar fica disponível para a turma: provas, datas, assuntos, links, conteúdo condensado, resumo dos vídeos, roteiro base e um banco de perguntas por matéria.
 - As outras mães abrem o link, digitam o código e o app já vem preenchido. Não precisam fotografar nada.
@@ -59,27 +71,30 @@ O Semana de Prova pega todo esse material e transforma em um plano simples: o qu
 
 ## 5. Jornada da criança
 
-1. Abre o app e cai na tela **Hoje**. No alto, uma régua com os dias: bolinhas mostram as sessões de cada dia (preenchidas quando feitas) e uma bandeira vermelha marca dia de prova. **[hoje]**
-2. Vê a lista de sessões do dia, com o tempo de cada uma e o total. Sessão de véspera vem com a etiqueta "revisão". Se a professora indicou vídeo, aparece a etiqueta "vídeo". **[hoje]**
-3. Toca numa sessão. Se houver link da professora, ele aparece primeiro, como botão grande ("A professora pediu para assistir"). **[hoje]**
-4. Segue "O que fazer": de 2 a 4 passos concretos, citando páginas e assuntos reais, e vai marcando cada um. **[hoje]**
-5. Se não entendeu, toca em "Explica pra mim": recebe uma explicação curta, com exemplos do dia a dia e uma dica para lembrar na prova. Pode pedir "de outro jeito". **[hoje]**
-6. Faz o quiz: 5 perguntas na sessão normal, 8 na revisão. Uma pergunta por vez, quatro opções, resposta na hora com uma explicação de por que é aquela. **[hoje]**
-7. Vê o resultado com uma mensagem de incentivo. Se errou, o app mostra o que vale reler e avisa que aquilo volta na revisão. Pode treinar de novo com perguntas novas. **[hoje]**
-8. A sessão fica marcada como feita. Também dá para marcar como feita sem quiz. **[hoje]**
-9. Sessão de dia anterior que não foi feita aparece em "Ficou para trás", enquanto a prova ainda não passou. **[hoje]**
-10. No dia da prova, em vez de sessão aparece um recado de boa sorte. **[hoje]**
+O app **oferece**, não manda. Todo o estudo de cada prova aparece de uma vez, em partes numeradas na ordem sugerida, e a criança escolhe qual fazer agora. Não há sessão presa a um dia: se ela quiser fazer três partes num sábado e nenhuma na segunda, tudo bem. A única exceção é a revisão da véspera, que continua ligada à data da prova, porque é ela que traz de volta o que a criança errou nos quizzes. **[hoje]**
+
+1. Abre o app e cai na tela **Estudar**. No alto, uma régua com os próximos dias, com bandeira vermelha nos dias de prova. **[hoje]**
+2. Se a prova é amanhã, a revisão de véspera aparece destacada no topo, antes de tudo. **[hoje]**
+3. Abaixo, uma seção por prova, da mais próxima para a mais distante: nome da matéria, quantos dias faltam, barra de progresso ("3 de 7 partes feitas") e a lista completa das partes. **[hoje]**
+4. Toca na parte que quiser. Se houver link da professora, ele aparece primeiro, como botão grande ("A professora pediu para assistir"). **[hoje]**
+5. Segue "O que fazer": passos concretos, citando páginas e assuntos reais, e vai marcando cada um. A quantidade de passos e o tamanho de cada parte seguem o ritmo definido para aquela criança. **[hoje]**
+6. Se não entendeu, toca em "Explica pra mim": recebe uma explicação curta, com exemplos do dia a dia e uma dica para lembrar na prova. Pode pedir "de outro jeito". **[hoje]**
+7. Faz o quiz: 5 perguntas na parte normal, 8 na revisão. Uma pergunta por vez, quatro opções, resposta na hora com uma explicação de por que é aquela. **[hoje]**
+8. Vê o resultado com uma mensagem de incentivo. Se errou, o app mostra o que vale reler e avisa que aquilo volta na revisão. Pode treinar de novo com perguntas novas. **[hoje]**
+9. A parte fica marcada como feita e o progresso da matéria sobe. Também dá para marcar como feita sem quiz. **[hoje]**
+10. No dia da prova, em vez das partes aparece um recado de boa sorte. **[hoje]**
 
 ## 6. Regras do roteiro
 
-- Toda prova futura tem pelo menos uma sessão antes do dia dela. Nunca há sessão no dia da prova nem depois.
-- Na véspera de cada prova há uma sessão de revisão daquela matéria.
-- Sessões de 15 a 30 minutos; a soma do dia respeita o limite definido pela família. Se não couber tudo, as sessões encurtam, em vez de uma prova ficar sem estudo.
-- A prova mais próxima tem prioridade. Matéria com muito conteúdo é dividida em partes com focos diferentes.
-- Se a prova tem link da professora, a primeira sessão inclui um passo para assistir, com tempo reservado.
-- Ao montar o roteiro de uma prova só, o app considera os minutos já ocupados pelas outras matérias em cada dia.
+- Cada prova vira de 2 a 8 partes numeradas, em ordem de estudo, do mais básico ao mais avançado. As partes cobrem todo o material guardado, sem repetir conteúdo entre elas.
+- **As partes não têm dia marcado.** A criança escolhe quando fazer cada uma. A única com data é a revisão, sempre a última, colocada na véspera da prova.
+- **Ritmo** (por criança: calmo, normal ou puxado) define quanto conteúdo cabe em cada parte e quantos passos ela tem. Ritmo calmo faz mais partes menores, com repetição; ritmo puxado faz menos partes maiores. É a régua certa para criança que precisa de mais tempo — aumentar o tempo máximo por dia não resolve isso.
+- **Tempo máximo de estudo por dia** é outra coisa: é só uma referência de quanto a família tem disponível, usada para avisar quando o conteúdo não cabe no tempo que sobra até a prova.
+- Quando há mais conteúdo do que tempo, o app **avisa antes de montar** e deixa a mãe escolher: priorizar o mais importante, acelerar o ritmo só naquela prova, ou montar assim mesmo. Ele nunca espreme em silêncio.
+- Se a prova tem link indicado pela professora, a primeira parte inclui um passo para assistir ou acessar.
 - Refazer o roteiro nunca apaga o que a criança já concluiu.
-- Se a IA falhar ou estiver desligada, o app monta um roteiro simples por conta própria.
+- Se a IA falhar ou estiver desligada, o app monta um roteiro simples por conta própria, respeitando o mesmo ritmo.
+- O roteiro só fala do material que foi realmente enviado. Quando o comunicado pede mais páginas do que entraram no app, o cartão da prova avisa, para a mãe não descobrir isso depois da prova.
 
 ## 7. Regras do quiz e da explicação
 
@@ -93,7 +108,8 @@ O Semana de Prova pega todo esse material e transforma em um plano simples: o qu
 ## 8. Telas
 
 - **Boas-vindas**: cadastro da criança.
-- **Hoje**: régua dos dias, sessões do dia, avisos de prova, "Ficou para trás".
+- **Estudar**: régua dos próximos dias, revisão de véspera em destaque, e uma seção por prova com progresso e a lista completa das partes.
+- **O que a IA entendeu**: por prova, o que veio do comunicado, o material lido bloco a bloco e o roteiro montado. Serve para a mãe auditar e corrigir.
 - **Sessão**: links da professora, passos, explicação, quiz.
 - **Quiz** e **Resultado**.
 - **Provas**: comunicados, cartão de cada prova (data, assuntos, páginas, links, situação do material e do roteiro), envio de material, roteiro por prova e geral.
@@ -104,7 +120,9 @@ O Semana de Prova pega todo esse material e transforma em um plano simples: o qu
 
 ## 9. O que a IA faz e o que não faz
 
-Faz: lê comunicados e páginas (foto, PDF, Word, texto), assiste a vídeo público do YouTube, extrai provas e links, condensa o conteúdo, monta o roteiro, explica e cria perguntas.
+Faz: lê comunicados e páginas (foto, PDF, Word, texto), assiste a vídeo público do YouTube, extrai provas e links, condensa o conteúdo, identifica de que material as páginas vieram, monta o roteiro, explica e cria perguntas.
+
+São duas IAs, com divisão clara: tudo que exige **enxergar** (foto, PDF, vídeo) vai para o Gemini, que é o único gratuito capaz de ler vídeo do YouTube direto do endereço. Roteiro, explicação e quiz trabalham só em cima do texto já extraído e podem ir para uma segunda IA mais rápida (Groq). Se a segunda IA falhar ou não estiver ligada, tudo volta para o Gemini sozinho.
 
 Não faz: não substitui a professora nem o livro; pode errar, principalmente em datas, em links lidos de foto e em fotos ruins; não lê vídeo privado ou não listado; não lê o formato antigo `.doc`. Por isso o app sempre deixa a mãe conferir e corrigir, e avisa na aba Pais que o conteúdo é gerado por IA.
 

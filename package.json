@@ -1,0 +1,25 @@
+{
+  "name": "apps-para-maes",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "node semana-de-prova/tests/smoke.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sivicentes/apps-para-maes.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/sivicentes/apps-para-maes/issues"
+  },
+  "homepage": "https://github.com/sivicentes/apps-para-maes#readme",
+  "private": "true",
+  "devDependencies": {
+    "jsdom": "^30.1.0"
+  }
+}
