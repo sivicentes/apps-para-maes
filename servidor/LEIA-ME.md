@@ -22,10 +22,30 @@ você pode querer levá-lo para um domínio próprio sem depender da empresa.
 
 ## Publicar (uma vez só)
 
-**De onde rodar:** da raiz do projeto (`apps-para-maes/`), use os atalhos abaixo.
-Se preferir rodar o `wrangler` direto, entre antes na pasta `servidor/` com
-`cd servidor` — fora dela o wrangler não acha a configuração e reclama que
-falta o nome do Worker.
+**De onde rodar:** sempre da raiz do projeto (`apps-para-maes/`), com os atalhos
+`npm run ...` abaixo. Eles já apontam para a configuração certa, então não
+precisa entrar na pasta `servidor/`.
+
+**Passo zero, uma vez na vida:**
+
+```bash
+npm install
+```
+
+Baixa o `wrangler` (o programa da Cloudflare) para dentro do projeto. Sem ele os
+atalhos respondem *"wrangler não é reconhecido como um comando interno ou
+externo"*. Nada disso vai para o GitHub: a pasta `node_modules` fica só no seu
+computador.
+
+Para conferir que está tudo no lugar — sem publicar, sem gastar nada e sem
+precisar estar logada:
+
+```bash
+npm run servidor:conferir
+```
+
+Ele deve listar `env.ORIGENS` e `env.TETO_DIA` e terminar com
+*"--dry-run: exiting now"*. Se isso aparecer, os outros comandos vão funcionar.
 
 ```bash
 npm run servidor:login
