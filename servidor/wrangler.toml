@@ -8,13 +8,16 @@ compatibility_date = "2026-09-20"
 ORIGENS = "https://sivicentes.github.io"
 TETO_DIA = "120"
 
-# Contador do teto diário. Descomente depois de criar o namespace com:
-#   npx wrangler kv namespace create USO
-# O comando devolve um id; cole abaixo.
-# [[kv_namespaces]]
-# binding = "KV"
-# id = "cole-o-id-aqui"
+# Contador do teto diário, criado com `npm run servidor:kv`.
+# Este id não é segredo: ele só funciona para quem está logado na conta.
+# Para recriar em outra conta: rode o comando de novo e troque o id aqui.
+[[kv_namespaces]]
+binding = "KV"
+id = "4bd6ba6bc78f42cdad16633a141c96be"
 
 # Segredos NÃO ficam aqui. São enviados pela linha de comando:
-#   npx wrangler secret put GEMINI_KEY
-#   npx wrangler secret put CODIGOS
+#   npm run servidor:chave     (GEMINI_KEY)
+#   npm run servidor:groq      (GROQ_KEY)
+#   npm run servidor:codigos   (CODIGOS)
+# Para conferir quais existem, sem ver os valores:
+#   npx wrangler secret list --config servidor/wrangler.toml
