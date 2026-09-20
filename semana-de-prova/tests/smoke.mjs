@@ -621,5 +621,87 @@ console.log("\n15. de quem é o aparelho");
   ok(w.document.getElementById("app").innerHTML.includes('data-a="kid"'), "voltando ao modo mãe, a troca de filho volta");
 }
 
+/* ================= 16. código da turma ================= */
+console.log("\n16. código da turma");
+{
+  // ---- mãe A: monta a semana ----
+  const A = await boot([]);
+  const copiado = [];
+  A.w.navigator.clipboard = { writeText: async v => { copiado.push(v); } };
+  A.t.ui.form = { name: "Lulu", grade: "5º ano" }; A.t.A.savekid();
+  const ka = A.t.S.kids[0];
+  ka.exams.push({ id: "e1", subject: "Ciências", date: "2099-12-10", topics: "sistema solar", pages: "120 a 123",
+    links: [{ url: "https://youtu.be/abcdefghijk", label: "vídeo da prof" }],
+    content: "", blocks: [], material: { sistema: "Objetivo", volume: "Apostila 2", edicao: "2026", serie: "5º ano" },
+    nPages: 0, misses: [{ q: "errou isso", topic: "planetas" }], asked: ["pergunta feita"] });
+  A.w.addBlocks(ka.exams[0], null, [{ materia: "Ciências", assunto: "o Sol", pagina: "120", conceitos: ["estrela"], conteudo: "O Sol é uma estrela." }]);
+  ka.sessions.push({ id: "s1", examId: "e1", ord: 1, date: null, type: "estudo", title: "Ciências: o Sol", minutes: 20, steps: [{ t: "Leia a página 120.", done: true }], done: true, explain: "", score: { right: 4, total: 5, at: "2026-09-20" } });
+  ka.sessions.push({ id: "s2", examId: "e1", ord: 2, date: "2099-12-09", type: "revisao", title: "Ciências: revisão", minutes: 20, steps: [{ t: "Releia tudo.", done: false }], done: false, explain: "", score: null });
+
+  A.t.A.tcopy();
+  await new Promise(r => setTimeout(r, 10));
+  const codigo = copiado[0];
+  const obj = JSON.parse(codigo);
+
+  // o que NAO pode vazar
+  ok(!codigo.includes("Lulu"), "o código da turma não leva o nome da criança");
+  ok(!codigo.includes("errou isso") && !codigo.includes("planetas"), "não leva os erros dos quizzes");
+  ok(!codigo.includes("pergunta feita"), "não leva as perguntas já feitas");
+  ok(!/"score"|"right"/.test(codigo), "não leva as notas");
+  ok(!/"done":true/.test(codigo), "não leva o que a criança já fez");
+  // o que PRECISA ir
+  eq(obj.turma, 1, "o código se identifica como código de turma");
+  eq(obj.provas.length, 1, "leva a prova");
+  eq(obj.provas[0].m, "Ciências", "leva a matéria");
+  eq(obj.provas[0].d, "2099-12-10", "leva a data");
+  eq(obj.provas[0].p, "120 a 123", "leva as páginas");
+  eq(obj.provas[0].l.length, 1, "leva o link da professora");
+  eq(obj.provas[0].mat.sistema, "Objetivo", "leva a identificação do material");
+  eq(obj.provas[0].b.length, 1, "leva o material que a IA já leu");
+  eq(obj.provas[0].r.length, 2, "leva o roteiro pronto");
+
+  // ---- mãe B: recebe, SEM chave de IA nenhuma ----
+  const B = await boot([]);
+  ok(!B.w.eval("!!sample"), "a mãe B não tem IA ligada");
+  B.t.ui.form = { name: "Bento", grade: "5º ano" }; B.t.A.savekid();
+  const kb2 = B.t.S.kids[0];
+  kb2.exams.push({ id: "x9", subject: "Matemática", date: "2099-12-11", topics: "frações", pages: "5 a 33", links: [], content: "", blocks: [], material: null, nPages: 0, misses: [], asked: [] });
+  kb2.sessions.push({ id: "m1", examId: "x9", ord: 1, date: null, type: "estudo", title: "Matemática: frações", minutes: 20, steps: [{ t: "Leia.", done: true }], done: true, explain: "", score: { right: 3, total: 5, at: "2026-09-20" } });
+
+  const r = B.w.importarTurma(obj);
+  eq(r.novas, 1, "entrou uma prova nova");
+  eq(r.comRot, 1, "com o roteiro pronto junto");
+  eq(kb2.exams.length, 2, "a prova dela continua lá, a da turma foi somada");
+  const ciencias = kb2.exams.find(e => e.subject === "Ciências");
+  eq(ciencias.pages, "120 a 123", "as páginas chegaram");
+  eq(ciencias.links.length, 1, "o link da professora chegou");
+  eq(ciencias.material.sistema, "Objetivo", "a identificação do material chegou");
+  ok(ciencias.content.includes("O Sol é uma estrela"), "o material lido chegou pronto, sem gastar IA");
+  eq(ciencias.misses.length, 0, "os erros da outra criança NÃO vieram");
+  eq(ciencias.asked.length, 0, "as perguntas da outra criança NÃO vieram");
+  const rot = kb2.sessions.filter(s => s.examId === ciencias.id).sort((a, b) => a.ord - b.ord);
+  eq(rot.length, 2, "as duas partes do roteiro chegaram");
+  eq(rot[0].title, "Ciências: o Sol", "com os títulos certos");
+  eq(rot[0].steps[0].t, "Leia a página 120.", "e os passos certos");
+  eq(rot[0].done, false, "mas zeradas: o progresso é de cada criança");
+  eq(rot[0].score, null, "sem as notas da outra criança");
+  eq(rot[1].date, "2099-12-09", "a revisão continua na véspera");
+
+  // o que a mae B faz dela nao foi tocado
+  const mat = kb2.sessions.find(s => s.examId === "x9");
+  eq(mat.done, true, "o que o Bento já fez continua feito");
+  eq(mat.score.right, 3, "a nota dele continua lá");
+
+  // colar duas vezes nao duplica
+  const r2 = B.w.importarTurma(obj);
+  eq(r2.novas, 0, "colar de novo não cria prova duplicada");
+  eq(kb2.exams.length, 2, "continua com duas provas");
+  eq(B.t.S.kids[0].sessions.filter(s => s.examId === ciencias.id).length, 2, "e não duplica o roteiro");
+
+  // codigo de turma nao e aceito como copia de seguranca, nem o contrario
+  B.t.ui.tab = "pais"; B.t.ui.unlocked = true; B.t.ui.screen = "pprovas"; B.w.render();
+  ok(B.w.document.getElementById("app").innerHTML.includes("Compartilhar com a turma"), "o card da turma aparece em Provas e material");
+}
+
 console.log(`\n${passed} passaram, ${failed} falharam`);
 process.exit(failed ? 1 : 0);

@@ -52,15 +52,24 @@ O Semana de Prova pega todo esse material e transforma em um plano simples: o qu
 - Faz cópia de segurança por código, para levar os dados a outro aparelho. A chave da IA nunca entra nessa cópia. **[hoje]**
 - Ao fim da semana, usa "Nova semana de provas" para limpar e recomeçar. **[hoje]**
 
-### 4.4 Com a turma [planejado]
+### 4.4 Com a turma
 
 O compartilhamento tem duas camadas, com chaves diferentes, porque são coisas de natureza diferente:
 
-- **As provas são da turma.** Quais matérias, que dia, o que cai: isso muda de unidade para unidade e fica atrás do código de acesso. O nome da escola é só rótulo para a mãe conferir que entrou no lugar certo, nunca a chave — por isso "Colégio Objetivo", que existe em centenas de unidades, não gera confusão.
-- **O material não é da escola.** A apostila do 5º ano do Objetivo é a mesma em todas as unidades do Brasil. O conteúdo lido fica num banco próprio, organizado por matéria e assunto, com a identificação do material (sistema, volume, edição) e a página como referência de onde encontrar. Assim a mãe de uma cidade aproveita o que a mãe de outra já fotografou, e o banco vai ficando mais rico a cada leitura em vez de começar do zero a cada turma.
-- A edição entra na identificação porque páginas mudam de lugar entre edições. Cada bloco guarda também uma impressão digital do texto, que serve para reconhecer conteúdo repetido e para conferir se o que veio do banco bate com a página da criança.
-- A mãe só precisa fotografar quando aquele material ainda não existe no banco, ou quando alguém marcou que o conteúdo guardado está errado. Sem isso, vem pronto.
-- Quem achar um conteúdo errado pode reportar; aquele trecho é lido de novo e substituído, com registro de quem alterou por último.
+- **As provas são da turma.** Quais matérias, que dia, o que cai: isso muda de unidade para unidade. O nome da escola é só rótulo, nunca a chave — por isso "Colégio Objetivo", que existe em centenas de unidades, não gera confusão.
+- **O material não é da escola.** A apostila do 5º ano do Objetivo é a mesma em todas as unidades do Brasil. O conteúdo lido é guardado por matéria e assunto, com a identificação do material (sistema, volume, edição) e a página como referência de onde encontrar. A edição entra na identificação porque páginas mudam de lugar entre edições, e cada bloco guarda uma impressão digital do texto, que serve para reconhecer conteúdo repetido.
+
+### Hoje: código da turma, sem servidor **[hoje]**
+
+Em Pais, "Compartilhar com a turma" copia um código com o que é da turma: provas, datas, assuntos, páginas, links, o material que a IA já leu e o roteiro pronto. A mãe manda no grupo da sala; as outras colam no app delas.
+
+- **Nunca vai nada da criança**: nem nome, nem progresso, nem notas, nem os erros dos quizzes.
+- **Soma, não substitui**: prova que a mãe já tem não duplica, e o roteiro só entra em prova que ainda não tem um. O que o filho dela já fez não é tocado.
+- **Quem recebe não precisa de chave de IA** para usar o roteiro: ele chega pronto e a criança já consegue estudar e marcar as partes. A chave só faz falta para explicação, quiz e para ler material novo.
+
+Essa é a versão de hoje do compartilhamento: resolve a turma agora, sem servidor, com o mesmo formato de dados que a Fase 2 vai usar.
+
+### Depois: turma no servidor [planejado]
 
 - A primeira mãe cria a turma (escola, ano e sala) e recebe um código para mandar no grupo da sala.
 - Tudo o que ela cadastrar e a IA processar fica disponível para a turma: provas, datas, assuntos, links, conteúdo condensado, resumo dos vídeos, roteiro base e um banco de perguntas por matéria.

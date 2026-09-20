@@ -1035,7 +1035,80 @@ function vPais() {
 function subHead(titulo, sub) {
   return '<button class="link" data-a="ppais">‹ Pais</button><div class="subhead">' + (sub ? '<div class="crumb">' + esc(sub) + "</div>" : "") + "<h1>" + esc(titulo) + "</h1></div>";
 }
-function vPProvas() { return subHead("Provas e material") + aiBanner() + provasBlock(); }
+/* ============ codigo da turma ============ */
+/* Leva SO o que e da turma: provas, datas, assuntos, paginas, links, material
+   condensado e o roteiro base. Nunca leva nome, progresso, notas nem erros da
+   crianca - isso e da familia e fica no aparelho. Ao colar, SOMA ao que ja
+   existe em vez de substituir: o progresso de quem recebe nao e tocado. */
+function codigoTurma(comMaterial) {
+  const k = kid();
+  return JSON.stringify({
+    turma: 1, serie: k.grade, em: today(),
+    provas: k.exams.map(e => ({
+      m: e.subject, d: e.date, t: e.topics, p: e.pages,
+      l: linksOf(e).map(x => ({ u: x.url, r: x.label })),
+      mat: e.material || null,
+      b: comMaterial ? (e.blocks || []).map(b => ({ a: b.assunto, pg: b.pagina, c: b.conceitos || [], x: b.texto, h: b.hash })) : [],
+      r: k.sessions.filter(s => s.examId === e.id).sort((a, b) => (a.ord || 0) - (b.ord || 0))
+        .map(s => ({ o: s.ord, tp: s.type, ti: s.title, mi: s.minutes, ps: s.steps.map(y => y.t) })),
+    })),
+  });
+}
+function importarTurma(o) {
+  if (!o || o.turma !== 1 || !Array.isArray(o.provas)) throw new Error("formato");
+  const k = kid(); let novas = 0, somadas = 0, comRot = 0, comMat = 0;
+  for (const p of o.provas) {
+    const mat = cutStr(p.m, 60); if (!mat) continue;
+    const data = validD(p.d) ? p.d : "";
+    let e = k.exams.find(x => x.subject.toLowerCase() === mat.toLowerCase() && x.date === data);
+    if (!e) {
+      e = { id: uid(), subject: mat, date: data, topics: cutStr(p.t, 800), pages: cutStr(p.p, 300), links: [], content: "", blocks: [], material: null, nPages: 0, misses: [], asked: [] };
+      k.exams.push(e); novas++;
+    } else {
+      somadas++;
+      if (!e.topics && p.t) e.topics = cutStr(p.t, 800);
+      if (!e.pages && p.p) e.pages = cutStr(p.p, 300);
+    }
+    /* links novos somam, sem duplicar */
+    const atuais = linksOf(e);
+    for (const l of Array.isArray(p.l) ? p.l : []) {
+      const u = cleanUrl(l && l.u); if (!u || atuais.some(x => x.url === u)) continue;
+      atuais.push({ url: u, label: cutStr(l.r, 80) });
+    }
+    e.links = atuais.slice(0, 8);
+    /* material condensado: soma os blocos que ainda nao existem */
+    const blocos = (Array.isArray(p.b) ? p.b : []).map(b => ({ materia: mat, assunto: cutStr(b && b.a, 120), pagina: cutStr(b && b.pg, 12), conceitos: Array.isArray(b && b.c) ? b.c : [], conteudo: cutStr(b && b.x, 6000) })).filter(b => b.conteudo);
+    if (blocos.length) { const r = addBlocks(e, p.mat || null, blocos); if (r.added) { comMat++; e.nPages = (e.nPages || 0) + r.added; } }
+    else if (p.mat && !e.material) { e.material = { sistema: cutStr(p.mat.sistema, 60), volume: cutStr(p.mat.volume, 60), edicao: cutStr(p.mat.edicao, 60), serie: cutStr(p.mat.serie, 60) }; }
+    /* roteiro base: so entra se esta prova ainda nao tem roteiro aqui */
+    const jaTem = k.sessions.some(s => s.examId === e.id);
+    const partes = (Array.isArray(p.r) ? p.r : []).filter(x => x && Array.isArray(x.ps) && x.ps.length);
+    if (!jaTem && partes.length) {
+      partes.sort((a, b) => (a.o || 0) - (b.o || 0)).forEach((x, i) => {
+        const rev = x.tp === "revisao";
+        k.sessions.push(mkSession(e, rev && validD(e.date) ? addDays(e.date, -1) : null, rev ? "revisao" : "estudo", cutStr(x.ti, 90) || mat, x.mi, x.ps.map(y => cutStr(y, 220)), i + 1));
+      });
+      comRot++;
+    }
+  }
+  k.exams.sort((a, b) => (a.date || "9").localeCompare(b.date || "9"));
+  k.sessions.sort((a, b) => {
+    const da = (k.exams.find(e => e.id === a.examId) || {}).date || "9", db = (k.exams.find(e => e.id === b.examId) || {}).date || "9";
+    return da.localeCompare(db) || (a.ord || 0) - (b.ord || 0);
+  });
+  save();
+  return { novas, somadas, comRot, comMat };
+}
+function vTurmaCard() {
+  const k = kid(), full = codigoTurma(true), leve = codigoTurma(false);
+  let h = '<div class="card"><h2>Compartilhar com a turma</h2><p class="small muted">Manda para as outras mães da sala o que é da turma: provas, datas, assuntos, páginas, links, o material que a IA já leu e o roteiro pronto. <b>Não vai nada de ' + esc(k.name) + '</b> — nem nome, nem notas, nem os erros dos quizzes.</p>';
+  h += '<p class="small muted">Quem receber não precisa de chave de IA para usar o roteiro: ele chega pronto. A chave só faz falta para explicação, quiz e para ler material novo.</p>';
+  h += '<div class="acts two"><button class="btn pri" data-a="tcopy">👭 Copiar o código da turma (' + kb(full) + ')</button><button class="btn" data-a="tpaste">Colar um código da turma</button></div>';
+  if (full.length > 60000) h += '<div class="acts"><button class="btn ghost" data-a="tcopylite">Copiar sem o material lido (' + kb(leve) + ')</button></div>';
+  if (ui.form.turma === "paste") h += '<label for="tio" style="margin-top:10px">Código que você recebeu</label><textarea id="tio" placeholder="Cole aqui o código que outra mãe mandou"></textarea><div class="acts"><button class="btn pri" data-a="tdoimport">Somar ao meu app</button></div><p class="small muted">Isso <b>soma</b>: nada do seu filho é apagado. Prova que você já tem não duplica, e o roteiro só entra em prova que ainda não tem um.</p>';
+  return h + "</div>";
+}
+function vPProvas() { return subHead("Provas e material") + aiBanner() + provasBlock() + vTurmaCard(); }
 function vPProg() {
   const k = kid(); let h = subHead("Como " + k.name + " está indo", k.grade);
   if (!k.exams.length) return h + '<div class="card"><p class="muted">Quando houver provas cadastradas, o progresso aparece aqui.</p></div>';
@@ -1214,6 +1287,14 @@ const A = {
   rshow() { ui.showKey = ui.showKey === "r" ? null : "r"; },
   gcopy() { copiar(G.key || "", "Chave do Gemini copiada. Cole no outro aparelho, em Pais."); },
   rcopy() { copiar(R.key || "", "Chave do Groq copiada."); },
+  tcopy() { copiar(codigoTurma(true), "Código da turma copiado! Mande no grupo da sala."); },
+  tcopylite() { copiar(codigoTurma(false), "Copiado sem o material lido."); },
+  tpaste() { ui.form.turma = ui.form.turma === "paste" ? null : "paste"; },
+  tdoimport() { let o; try { o = JSON.parse($("#tio").value); } catch (e) { return toast("Esse código não é válido."); }
+    if (!o || o.turma !== 1) return toast("Esse código não é de turma. O código da turma começa com {\"turma\":1.");
+    try { const r = importarTurma(o); ui.form.turma = null;
+      toast(r.novas + " prova(s) nova(s)" + (r.somadas ? ", " + r.somadas + " já existia(m)" : "") + (r.comRot ? ", " + r.comRot + " com roteiro pronto" : "") + (r.comMat ? ", " + r.comMat + " com material" : "") + "."); }
+    catch (e) { toast("Não consegui ler esse código."); } },
   clearlog() { LOG = []; saveLog(); },
   export() { ui.form.io = ui.form.io === "export" ? null : "export"; },
   import() { ui.form.io = ui.form.io === "import" ? null : "import"; },
