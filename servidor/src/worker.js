@@ -72,6 +72,31 @@ async function guardaModelo(env, qual, modelo) {
   try { await env.KV.put("modelo:" + qual, modelo, { expirationTtl: LEMBRAR }); } catch (e) {}
 }
 
+/* Modelo que bateu no teto do Google fica de castigo, para nao ser tentado de
+   novo a cada pedido. Isso importa muito numa leitura de paginas: a tentativa
+   perdida sobe as fotos junto. No nivel gratuito o teto diario por modelo e
+   baixo (20 pedidos/dia por modelo, 5 por minuto), entao cada modelo da
+   familia Flash conta separado e vale a pena revezar entre eles. */
+const eDoDia = msg => /per\s*day|daily|requests per day|RPD|quota.*day/i.test(String(msg || ""));
+const ateAmanha = () => { const d = new Date(); const fim = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1, 8); return Math.max(3600, Math.round((fim - Date.now()) / 1000)); };
+async function descansos(env) {
+  if (!env.KV) return {};
+  try {
+    const o = JSON.parse((await env.KV.get("descansos")) || "{}"), agora = Date.now();
+    return Object.fromEntries(Object.entries(o).filter(([, t]) => t > agora));
+  } catch (e) { return {}; }
+}
+/* guarda no proprio objeto tambem, senao dois modelos que estouram no MESMO
+   pedido se sobrescrevem e so o ultimo fica registrado */
+async function poeDeCastigo(env, atuais, modelo, seg) {
+  atuais[modelo] = Date.now() + seg * 1000;
+  if (!env.KV) return;
+  try { await env.KV.put("descansos", JSON.stringify(atuais), { expirationTtl: 60 * 60 * 30 }); } catch (e) {}
+}
+/* quem nao esta de castigo vem primeiro; os de castigo ficam no fim, nunca
+   fora, para o app nao ficar sem resposta se todos estiverem no limite */
+const ordemPorDescanso = (lista, parados) => [...lista.filter(m => !parados[m]), ...lista.filter(m => parados[m])];
+
 /* teto diario por aparelho. Sem KV ligado, nao conta (e avisa na resposta). */
 async function cota(env, codigo, aparelho) {
   if (!env.KV) return { ok: true, semContagem: true };
@@ -141,7 +166,12 @@ async function tentarGroq(p, env) {
   if (!env.GROQ_KEY) return null;
   if (p.video || (Array.isArray(p.fotos) && p.fotos.length)) return null;
   const lembrado = await modeloBom(env, "groq");
-  const candidatos = [...new Set([p.modeloRapido, lembrado, ...RMODELOS].filter(Boolean))].slice(0, 3);
+  const parados = await descansos(env);
+  const todos = [...new Set([p.modeloRapido, lembrado, ...RMODELOS].filter(Boolean))];
+  const candidatos = ordemPorDescanso(todos, parados).slice(0, 3);
+  /* se todos os que seriam tentados estao de castigo, nem tenta: aqui
+     existe o Gemini atras, e insistir so atrasaria a resposta */
+  if (candidatos.every(m => parados[m])) return null;
   for (const modelo of candidatos) {
     let r;
     try {
@@ -167,7 +197,8 @@ async function tentarGroq(p, env) {
       return { texto, modelo };
     }
     /* modelo aposentado ou minuto cheio: tenta o proximo da lista */
-    if (r.status === 404 || r.status === 429 || r.status >= 500) continue;
+    if (r.status === 429) { await poeDeCastigo(env, parados, modelo, 90); continue; }
+    if (r.status === 404 || r.status >= 500) continue;
     return null;   // chave recusada ou pedido invalido: nao insiste
   }
   return null;
@@ -204,7 +235,8 @@ export default {
 
     const base = montarPedido(p);
     const lembrado = await modeloBom(env, "gemini");
-    const candidatos = [...new Set([p.modelo, lembrado, ...MODELOS].filter(Boolean))].slice(0, 4);
+    const parados = await descansos(env);
+    const candidatos = ordemPorDescanso([...new Set([p.modelo, lembrado, ...MODELOS].filter(Boolean))], parados).slice(0, 4);
     let ultimo = { erro: "upstream" };
 
     for (const modelo of candidatos) {
@@ -235,7 +267,12 @@ export default {
       const err = await r.json().catch(() => ({}));
       const msg = (err.error && err.error.message) || "";
       if (r.status === 401 || r.status === 403) return resp({ erro: "chave_servidor", mensagem: "A chave do servidor foi recusada pelo Google." }, 502, origem, env);
-      if (r.status === 429) { ultimo = { erro: "limite_google" }; continue; }
+      if (r.status === 429) {
+        const dia = eDoDia(msg);
+        await poeDeCastigo(env, parados, modelo, dia ? ateAmanha() : 90);
+        ultimo = { erro: dia ? "limite_dia" : "limite_google", mensagem: msg.slice(0, 200) };
+        continue;
+      }
       if (r.status === 404 || r.status >= 500 || /model|not supported|not found/i.test(msg)) { ultimo = { erro: "upstream" }; continue; }
       return resp({ erro: p.video ? "video" : "upstream", mensagem: msg.slice(0, 200) }, 502, origem, env);
     }

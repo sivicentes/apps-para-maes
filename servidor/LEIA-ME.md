@@ -173,13 +173,34 @@ No `wrangler.toml`:
 ```bash
 npm test
 ```
-90 verificações com as duas IAs simuladas: nenhuma chamada real, nenhuma chave.
+117 verificações com as duas IAs simuladas: nenhuma chamada real, nenhuma chave.
 
 Para ver o que está acontecendo no servidor de verdade:
 
 ```bash
 npm run servidor:log
 ```
+
+## O limite do Gemini gratuito (o gargalo de verdade)
+
+No nível gratuito o Google dá, **por modelo**: 5 pedidos por minuto e
+**20 por dia**. Como o app reveza entre os modelos da família Flash, o teto
+prático fica em torno de 80 pedidos por dia — somando os dois filhos.
+
+O que mais gasta é **ler fotos**: cada leva de até 3 páginas é um pedido, e só
+o Gemini enxerga. Com a `GROQ_KEY` configurada, roteiro, explicação e quiz
+saem do Gemini e deixam de consumir essa cota — é a economia mais barata que
+existe aqui.
+
+Quando um modelo estoura, o Worker o **põe de castigo** e passa ao seguinte:
+90 segundos se foi o limite por minuto, até a virada do dia se foi o diário.
+Sem isso, cada pedido reexperimentava o modelo esgotado — e numa leitura de
+páginas essa tentativa perdida sobe as fotos de novo.
+
+Para ver onde está o consumo: `aistudio.google.com` → **Limites de taxa por
+modelo**. A coluna RPD é a do dia. Se ela viver no vermelho, o caminho é
+ativar o nível pago — que também resolve o conteúdo não ser usado em treino,
+já previsto no `PRODUTO.md` antes de abrir para outras famílias.
 
 ## O que protege, e o que não protege
 

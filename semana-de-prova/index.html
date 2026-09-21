@@ -423,13 +423,14 @@ const SRVERR = {
   chave_servidor: "O servidor está com problema na chave. Avise quem cuida do app.",
   sem_chave: "O servidor ainda não tem chave configurada.",
   limite_google: "O limite gratuito por minuto foi atingido. Espere um minutinho.",
+  limite_dia: "O limite gratuito de hoje acabou nesta conta do Google. O app vai tentar os outros modelos sozinho; se não der, amanhã o limite zera. Ler fotos é o que mais gasta.",
   cortado: "A resposta veio pela metade: o material é grande demais para uma vez só.",
   recusado: "A IA não pôde responder a esse material.",
   vazio_ia: "A IA respondeu em branco. Tente de novo em alguns segundos.",
   video: "Não consegui assistir a esse vídeo. Ele precisa ser público no YouTube.",
 };
 /* erros que NAO adianta repetir na chave propria: sao decisao do servidor */
-const SRVFINAL = ["codigo", "cota", "origem", "cortado", "recusado", "vazio_ia", "video", "limite_google"];
+const SRVFINAL = ["codigo", "cota", "origem", "cortado", "recusado", "vazio_ia", "video", "limite_google", "limite_dia"];
 /* qual IA o servidor usou no ultimo pedido, so para o diario tecnico */
 let srvUltimo = "";
 

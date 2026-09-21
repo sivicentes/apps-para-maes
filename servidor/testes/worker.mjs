@@ -342,6 +342,92 @@ console.log("\n10. o servidor lembra o modelo que funcionou");
   eq((await r.json()).texto, "sem kv tambem vai", "sem KV o servidor nao quebra");
 }
 
+console.log("\n11. modelo que bateu no teto do Google fica de castigo");
+{
+  const FOTO = { tipo: "image/jpeg", dados: "AAAA" };
+  const err429 = msg => ({ ok: false, status: 429, json: async () => ({ error: { message: msg } }) });
+  const DIA = "You exceeded your current quota: 20 requests per day per model";
+  const MIN = "Quota exceeded for quota metric 'Generate requests per minute'";
+
+  // teto DIARIO: o modelo sai da frente, e o proximo assume
+  {
+    const KV = kvFalso();
+    geminiFalso(u => u.includes("gemini-3.8-flash") ? err429(DIA) : RESP("veio do seguinte"));
+    let r = await worker.fetch(pedido({ ...CORPO, fotos: [FOTO] }), ENV({ KV }));
+    eq((await r.json()).texto, "veio do seguinte", "o pedido ainda e atendido");
+    eq(chamadas.length, 2, "pagando uma tentativa perdida, dessa vez");
+
+    // o proximo pedido nao tenta mais o esgotado: as fotos sobem uma vez so
+    geminiFalso(u => u.includes("gemini-3.8-flash") ? err429(DIA) : RESP("veio do seguinte"));
+    r = await worker.fetch(pedido({ ...CORPO, fotos: [FOTO] }), ENV({ KV }));
+    eq((await r.json()).texto, "veio do seguinte", "responde igual");
+    eq(chamadas.length, 1, "sem repetir o modelo esgotado");
+    ok(!chamadas[0].url.includes("gemini-3.8-flash"), "ele ficou para o fim da fila");
+  }
+
+  // teto por MINUTO: castigo curto, e a mensagem para o app e outra
+  {
+    const KV = kvFalso();
+    geminiFalso(err429(MIN));
+    const r = await worker.fetch(pedido(CORPO), ENV({ KV }));
+    const d = await r.json();
+    eq(d.erro, "limite_google", "limite por minuto e avisado como tal");
+    const guardado = JSON.parse(await KV.get("descansos"));
+    const falta = (guardado["gemini-3.8-flash"] - Date.now()) / 1000;
+    ok(falta > 30 && falta < 200, "com castigo curto, de alguns segundos");
+  }
+
+  // teto do dia: castigo longo e erro proprio
+  {
+    const KV = kvFalso();
+    geminiFalso(err429(DIA));
+    const r = await worker.fetch(pedido(CORPO), ENV({ KV }));
+    const d = await r.json();
+    eq(d.erro, "limite_dia", "limite do dia tem aviso proprio, nao 'espere um minutinho'");
+    const falta = (JSON.parse(await KV.get("descansos"))["gemini-3.8-flash"] - Date.now()) / 1000;
+    ok(falta > 3000, "com castigo longo, de horas");
+  }
+
+  // com todos no limite, ainda tenta: melhor um erro do Google que nenhum pedido
+  {
+    const KV = kvFalso();
+    geminiFalso(err429(DIA));
+    await worker.fetch(pedido(CORPO), ENV({ KV }));
+    geminiFalso(u => RESP("um deles liberou"));
+    const r = await worker.fetch(pedido(CORPO), ENV({ KV }));
+    eq((await r.json()).texto, "um deles liberou", "modelo de castigo ainda e tentado se nao houver outro caminho");
+  }
+
+  // a IA rapida tem o proprio castigo, e cai para o Gemini sem barulho
+  {
+    const KV = kvFalso();
+    let nGroq = 0;
+    chamadas = [];
+    globalThis.fetch = async (url, opts) => {
+      const u = String(url); chamadas.push({ url: u, alvo: u.includes("groq.com") ? "groq" : "gemini" });
+      if (u.includes("groq.com")) { nGroq++; return err429(MIN); }
+      return RESP("o Gemini assumiu");
+    };
+    const r = await worker.fetch(pedido(CORPO), ENV({ KV, GROQ_KEY: "CHAVE-RAPIDA" }));
+    eq((await r.json()).texto, "o Gemini assumiu", "Groq no limite nao quebra nada");
+    ok(nGroq > 0, "tentou os modelos rapidos disponiveis");
+    /* a lista rapida tem mais modelos do que cabem num pedido, entao o
+       proximo ainda experimenta os que sobraram; depois disso, para */
+    await worker.fetch(pedido(CORPO), ENV({ KV, GROQ_KEY: "CHAVE-RAPIDA" }));
+    const g2 = nGroq;
+    const r3 = await worker.fetch(pedido(CORPO), ENV({ KV, GROQ_KEY: "CHAVE-RAPIDA" }));
+    eq(nGroq - g2, 0, "com todos de castigo, o Groq nem e tentado: vai direto no Gemini");
+    eq((await r3.json()).ia, "gemini", "e a resposta vem do Gemini");
+  }
+
+  // sem KV, tudo continua funcionando (so sem memoria de castigo)
+  {
+    geminiFalso(u => u.includes("gemini-3.8-flash") ? err429(DIA) : RESP("sem kv tambem vai"));
+    const r = await worker.fetch(pedido(CORPO), ENV());
+    eq((await r.json()).texto, "sem kv tambem vai", "sem KV o servidor nao quebra");
+  }
+}
+
 globalThis.fetch = real;
 console.log(`\n${passou} passaram, ${falhou} falharam`);
 process.exit(falhou ? 1 : 0);
