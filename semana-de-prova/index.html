@@ -692,6 +692,8 @@ function noticePrompt(extra) {
     '{"provas":[{"materia":"Matemática","data":"AAAA-MM-DD","conteudo":"assuntos que caem, em uma ou duas frases","paginas":"páginas, capítulos ou materiais indicados para estudar (ou vazio)","links":[{"url":"https://...","descricao":"o que é, em poucas palavras"}]}]}\n' +
     "Em \"links\" coloque os endereços (YouTube, sites, formulários) que a professora indicou para AQUELA prova, copiados caractere por caractere, sem corrigir nem completar; se não houver, use []. " +
     "Regras: se o ano não aparecer, escolha a data futura mais próxima de hoje. Se a data estiver ilegível, use \"\". Não invente provas nem conteúdos que não estejam escritos. Mantenha os números de página exatamente como aparecem." +
+    "\nEm \"paginas\" coloque SOMENTE números que o comunicado marca como página (\"Páginas: 7, 8 e 9\", \"págs. 40 a 52\", \"p. 14\"). NÃO ponha: número que faz parte do assunto (em \"Multiplicação 10, 100 e 1000 – Páginas: 14 e 22\" as páginas são só 14 e 22); nome de material (\"Caderno 3\", \"Apostila 2\" e \"Lección 5\" NÃO são páginas); número de exercício ou de questão. Se a professora não indicar página nenhuma, use \"\"." +
+    "\nMaterial que a professora cita sem páginas — caderno de classe, atividades extras, revisão no caderno, lição de casa antiga — não entra em \"paginas\": escreva no \"conteudo\", dizendo que é no caderno da criança. Se ela disser que é opcional, comece essa parte por \"Opcional:\"." +
     (extra ? "\n\nTEXTO DOS COMUNICADOS (pode haver mais de um arquivo, de professoras diferentes; junte tudo):\n" + extra.slice(0, 30000) : "");
 }
 async function readNotice(files, pasted) {
@@ -862,22 +864,30 @@ function paceRules(p) {
 }
 /* conjunto de paginas a partir do que a professora (ou a IA) escreveu:
    "120 a 153", "40-52", "12, 15 e 18", "120-121" (foto de duas paginas) */
-/* Nem todo numero no campo de paginas e pagina. "caderno 3", "Apostila 2",
-   "Leccion 5 e 6", "questao 7" sao referencias de material ou de exercicio, e
-   viravam pagina: o app passava a pedir foto de uma pagina que nao existe e a
-   avisar que faltava material. Aqui essas expressoes saem antes da conta. */
+/* Nem todo numero no campo de paginas e pagina. Dois enganos reais vindos dos
+   comunicados da escola:
+     "Caderno 3:"                        -> nao e a pagina 3
+     "Multiplicacao 10, 100 e 1000 - Paginas: 14 e 22"  -> so 14 e 22 sao paginas
+   Por isso: quando o texto marca as paginas com "pagina/pags./p.", so o que vem
+   depois do marcador conta. Sem marcador nenhum (como em "120-121", que e o que
+   a IA grava em cada bloco), vale o texto todo, tirando as referencias de
+   material e de exercicio. */
 const NUM_OU_FAIXA = "\\d{1,4}(?:\\s*(?:a|à|at[eé]|-|–|—)\\s*\\d{1,4})?";
+const LISTA_NUM = NUM_OU_FAIXA + "(?:\\s*(?:,|;|e|/)\\s*" + NUM_OU_FAIXA + ")*";
+const MARCA_PAG = new RegExp("\\b(?:p[áa]ginas?|p[áa]gs?|pp|p)\\s*\\.?\\s*:?\\s*(" + LISTA_NUM + ")", "gi");
 /* palavra antes do numero: "caderno 3", "Licao 5 e 6" */
 const NAOPAG_ANTES = new RegExp(
   "\\b(cadernos?|livros?|apostilas?|volumes?|vol|unidades?|cap[ií]tulos?|cap|m[oó]dulos?|aulas?|li[çc][õoã]es|li[çc][ãa]o|leccion(?:es)?|lecci[oó]n|lessons?|bimestres?|trimestres?|semestres?|etapas?|s[eé]ries?|tomos?|partes?|atividades?|exerc[ií]cios?|quest[õo]es|quest[ãa]o|anexos?|blocos?|se[çc][õoã]es|se[çc][ãa]o)" +
-  "\\s*\\.?\\s*:?\\s*" + NUM_OU_FAIXA + "(?:\\s*(?:e|,|;|/)\\s*" + NUM_OU_FAIXA + ")*", "gi");
+  "\\s*\\.?\\s*:?\\s*" + LISTA_NUM, "gi");
 /* numero antes da palavra: "4º ano", "2ª unidade" */
 const NAOPAG_DEPOIS = /\d{1,4}\s*[ºo°ª]?\s*(anos?|s[eé]ries?|bimestres?|trimestres?|semestres?|unidades?|cap[ií]tulos?|volumes?|cadernos?|li[çc][ãa]o|aulas?)\b/gi;
 const soPaginas = str => String(str || "").replace(NAOPAG_ANTES, " ").replace(NAOPAG_DEPOIS, " ");
 
 function pageSet(str) {
   const out = new Set();
-  soPaginas(str)
+  const marcadas = [...String(str || "").matchAll(MARCA_PAG)].map(m => m[1]).join(" ; ");
+  const fonte = marcadas || soPaginas(str);
+  fonte
     .replace(/(\d{1,4})\s*(?:a|à|até|-|–|—)\s*(\d{1,4})/gi, (m, a, b) => {
       const x = +a, y = +b; if (y >= x && y - x < 400) for (let i = x; i <= y; i++) out.add(i);
       return " ";

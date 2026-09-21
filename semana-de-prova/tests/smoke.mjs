@@ -1675,5 +1675,53 @@ console.log("\n33. \"caderno 3\" não é a página 3");
   ok(w.document.getElementById("app").innerHTML.includes("Sem páginas anotadas"), "ela vê o aviso certo: faltam as páginas na prova");
 }
 
+/* ================= 34. o comunicado de Matemática, como ele é ================= */
+console.log("\n34. o comunicado de Matemática do Caderno 3");
+{
+  const { w, t } = await boot([]);
+  const pg = s => [...w.pageSet(s)].sort((a, b) => a - b).join(",");
+
+  /* linhas copiadas do comunicado real da escola */
+  eq(pg("Situações problemas envolvendo cálculos de multiplicação – Páginas: 7, 8, 9, 10 e 11."), "7,8,9,10,11", "lista de páginas separada por vírgula e 'e'");
+  eq(pg("Multiplicação 10, 100 e 1000 – Páginas: 14 e 22."), "14,22", "o 10, 100 e 1000 do assunto não vira página");
+  eq(pg("Relógio de ponteiros – Páginas: 30, 31 e 45."), "30,31,45", "páginas soltas depois do assunto");
+  eq(pg("Caderno 3:"), "", "o título do caderno não é página");
+  eq(pg("Contas de adição, subtração e multiplicação."), "", "assunto sem número nenhum");
+  eq(pg("Os alunos também poderão estudar as atividades extras que estão no caderno de classe."), "", "o caderno de classe não pede página nenhuma");
+
+  /* o campo de páginas como ele chega quando a IA lê a tabela inteira */
+  const tudo = "Caderno 3. Multiplicação 10, 100 e 1000 – Páginas: 14 e 22. Relógio de ponteiros – Páginas: 30, 31 e 45. Situações problemas – Páginas: 7, 8, 9, 10 e 11.";
+  eq(pg(tudo), "7,8,9,10,11,14,22,30,31,45", "a prova inteira dá exatamente 10 páginas, sem 3, 10, 100 nem 1000 a mais");
+
+  /* quando há marcador, o que está fora dele é ignorado */
+  eq(pg("Multiplicação por 100 e 1000"), "100,1000", "sem marcador, o app não tem como adivinhar: conta os números");
+  eq(pg("Multiplicação por 100 e 1000 – página 14"), "14", "com marcador, só o que vem depois dele conta");
+
+  /* o que já funcionava continua igual */
+  eq(pg("120 a 123 e 130; 132 a 134"), "120,121,122,123,130,132,133,134", "intervalos sem marcador");
+  eq(pg("120-121"), "120,121", "o formato que a IA grava em cada bloco");
+  eq(pg("p. 4 a 6"), "4,5,6", "abreviação p.");
+  eq(pg("págs. 40 a 52"), "40,41,42,43,44,45,46,47,48,49,50,51,52", "abreviação págs.");
+
+  /* e o efeito na tela: só as 10 páginas de verdade são pedidas */
+  t.ui.form = { name: "Benja", grade: "4º ano" }; t.A.savekid();
+  const e = { id: "e1", subject: "Matemática", date: "2099-12-10", topics: "Contas de adição, subtração e multiplicação. Opcional: atividades extras no caderno de classe.", pages: tudo, links: [], content: "", blocks: [], material: null, nPages: 0, misses: [], asked: [] };
+  t.S.kids[0].exams.push(e);
+  const p = w.planoPaginas(e);
+  eq(p.quer.length, 10, "a tela de fotos pede 10 páginas");
+  eq(w.faixas(p.falta), "7 a 11, 14, 22, 30 a 31, 45", "listadas em faixas legíveis");
+  t.A.pages({ id: "e1" }); w.render();
+  const html = w.document.getElementById("app").innerHTML;
+  ok(html.includes("7 a 11, 14, 22, 30 a 31, 45"), "e é isso que ela vê na tela da câmera");
+  ok(!html.includes("1000"), "sem mandar fotografar a página 1000");
+
+  /* o prompt ensina a IA a separar as duas coisas */
+  const pr = w.noticePrompt("");
+  ok(pr.includes("Caderno 3"), "o prompt avisa que Caderno 3 não é página");
+  ok(pr.includes("caderno de classe"), "e o que fazer com o caderno de classe");
+  ok(pr.includes("Opcional:"), "pedindo que o opcional venha marcado como tal");
+  ok(pr.includes("Multiplicação 10, 100 e 1000"), "com o exemplo real de número que não é página");
+}
+
 console.log(`\n${passed} passaram, ${failed} falharam`);
 process.exit(failed ? 1 : 0);
