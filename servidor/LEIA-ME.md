@@ -173,7 +173,7 @@ No `wrangler.toml`:
 ```bash
 npm test
 ```
-117 verificações com as duas IAs simuladas: nenhuma chamada real, nenhuma chave.
+128 verificações com as duas IAs simuladas: nenhuma chamada real, nenhuma chave.
 
 Para ver o que está acontecendo no servidor de verdade:
 
@@ -183,9 +183,23 @@ npm run servidor:log
 
 ## O limite do Gemini gratuito (o gargalo de verdade)
 
-No nível gratuito o Google dá, **por modelo**: 5 pedidos por minuto e
-**20 por dia**. Como o app reveza entre os modelos da família Flash, o teto
-prático fica em torno de 80 pedidos por dia — somando os dois filhos.
+No nível gratuito o teto é **por modelo**, e varia muito entre eles:
+
+| modelo | por minuto | por dia |
+|---|---|---|
+| Gemini 3.8 / 3.7 / 3.6 / 3.5 / 3 Flash | 5 | **20 cada** |
+| Gemini 3.5 Flash Lite e 3.1 Flash Lite | 15 | **500 cada** |
+
+Foi a descoberta de 20/09/2026, num dia em que os quatro Flash estavam
+estourados e os dois Lite estavam em 0/500. **Os Lite são o que sustenta o
+uso real**: eles leem um pouco menos bem, mas dão 25 vezes mais pedidos.
+Por isso a lista do Worker vai dos Flash completos para os Lite, nessa ordem:
+começa pelo que lê melhor e, quando ele esgota, o dia continua.
+
+Confira a lista da sua conta em `aistudio.google.com` → **Limites de taxa por
+modelo** → botão *Todos os modelos*. Se aparecer um Lite mais novo, acrescente
+em `MODELOS`, no `src/worker.js`: modelo que a conta não tem responde 404 e
+sai da fila sozinho, sem custo.
 
 O que mais gasta é **ler fotos**: cada leva de até 3 páginas é um pedido, e só
 o Gemini enxerga. Com a `GROQ_KEY` configurada, roteiro, explicação e quiz
@@ -197,8 +211,9 @@ Quando um modelo estoura, o Worker o **põe de castigo** e passa ao seguinte:
 Sem isso, cada pedido reexperimentava o modelo esgotado — e numa leitura de
 páginas essa tentativa perdida sobe as fotos de novo.
 
-Para ver onde está o consumo: `aistudio.google.com` → **Limites de taxa por
-modelo**. A coluna RPD é a do dia. Se ela viver no vermelho, o caminho é
+Para ver o que o servidor respondeu em cada pedido: `npm run servidor:diario`.
+Ele guarda hora, modelo, status e o motivo do Google — e **nunca** o texto do
+pedido, as fotos, as chaves, o código de acesso ou o id do aparelho. Se ela viver no vermelho, o caminho é
 ativar o nível pago — que também resolve o conteúdo não ser usado em treino,
 já previsto no `PRODUTO.md` antes de abrir para outras famílias.
 
