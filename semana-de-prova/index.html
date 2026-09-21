@@ -1108,11 +1108,26 @@ async function compartilhar(txt, titulo) {
 }
 const kb = t => Math.round(String(t).length / 1024) + " KB";
 /* copia enxuta: sem o material lido, para caber em mensagem */
-function estadoLeve() {
+/* O codigo de "para outro aparelho meu" leva tambem a senha dos pais. Ela nao
+   e segredo de seguranca (quem tem o aparelho na mao ve tudo), e sim a tranca
+   que impede a crianca de apagar prova e roteiro sem querer. Sem isto, o
+   tablet chegava com a area dos pais aberta. Fica como campo extra: codigo
+   antigo continua sendo lido, e aparelho antigo ignora o campo. */
+function estadoParaLevar(leve) {
   const c = JSON.parse(JSON.stringify(S));
-  c.kids.forEach(k => k.exams.forEach(e => { e.content = ""; e.blocks = []; e.nPages = 0; }));
-  c.leve = 1; return JSON.stringify(c);
+  if (leve) { c.kids.forEach(k => k.exams.forEach(e => { e.content = ""; e.blocks = []; e.nPages = 0; })); c.leve = 1; }
+  if (PINV) c.pin = PINV;
+  return JSON.stringify(c);
 }
+/* aplica a senha que veio no codigo e tranca a area dos pais */
+function aplicaPinDoCodigo(o) {
+  if (!o || typeof o !== "object") return;
+  const v = String(o.pin || "").replace(/\D/g, "").slice(0, 4);
+  delete o.pin;
+  if (v.length === 4) { PINV = v; savePin(); }
+  ui.unlocked = false;
+}
+function estadoLeve() { return estadoParaLevar(true); }
 function vDevCard() {
   let h = '<div class="card"><h2>Este aparelho</h2><p class="small"><span class="tag' + (soCrianca() ? "" : " ok") + '">' + esc(devLabel()) + "</span></p>";
   h += '<p class="small muted">No aparelho da criança, o app abre direto no perfil dela, sem o botão que troca de filho. A área dos pais continua atrás da senha.</p>';
@@ -1559,7 +1574,7 @@ function vPCompartilhar() {
     '<p class="small" style="color:var(--bad)"><b>Não mande isto para outra mãe</b> — são dados dos seus filhos.</p>' +
     '<div class="acts two"><button class="btn pri" data-a="iocopy">📋 Copiar</button>' + (podeCompartilhar() ? '<button class="btn" data-a="ioshare">📤 Enviar</button>' : '<button class="btn" data-a="export">Ver o código</button>') + "</div>" +
     '<div class="acts"><button class="btn ghost" data-a="import">Colar um código meu aqui</button></div>' +
-    (f.io ? '<textarea id="io" style="margin-top:10px;font-size:.78rem" ' + (f.io === "export" ? "readonly>" + esc(JSON.stringify(S)) : 'placeholder="Cole aqui a cópia que veio do seu outro aparelho">') + "</textarea>" + (f.io === "import" ? '<div class="acts"><button class="btn pri" data-a="doimport">Restaurar</button></div>' : "") : "") + "</div>";
+    (f.io ? '<textarea id="io" style="margin-top:10px;font-size:.78rem" ' + (f.io === "export" ? "readonly>" + esc(estadoParaLevar()) : 'placeholder="Cole aqui a cópia que veio do seu outro aparelho">') + "</textarea>" + (f.io === "import" ? '<div class="acts"><button class="btn pri" data-a="doimport">Restaurar</button></div>' : "") : "") + "</div>";
   h += '<div class="card"><h2>👭 Para as mães da turma</h2><p class="small muted">Leva só o que é da sala: provas, datas, o que cai, páginas, links da professora, o material que a IA já leu e o roteiro pronto.</p>' +
     '<p class="small"><span class="tag ok">nada de ' + esc(k.name) + ' vai junto</span> <span class="small muted">nem nome, nem progresso, nem notas, nem os erros dos quizzes.</span></p>' +
     '<p class="small muted">Quem receber não precisa de chave de IA para usar o roteiro: ele chega pronto. A chave só faz falta para explicação, quiz e para ler material novo.</p>' +
@@ -1631,7 +1646,9 @@ function vDiag() {
 function keepForm() { document.querySelectorAll("#app input[id],#app textarea[id],#app select[id]").forEach(el => { const m = { kname: "name", kgrade: "grade", kpace: "pace", wio: "wio", ntext: "ntext", esub: "subject", edate: "date", etop: "topics", epag: "pages", elinks: "links", ptext: "ptext", msis: "msis", mvol: "mvol", medi: "medi", surl: "surl", scod: "scod" }[el.id]; if (m) ui.form[m] = el.value; }); }
 /* ============ ações ============ */
 const A = {
-  tab(d) { ui.tab = d.t; ui.screen = null; ui.form = {}; if (d.t !== "pais") ui.riddle = null; },
+  /* sair da aba dos pais volta a trancar: no tablet, que fica aberto o dia
+     inteiro, sem isto a senha so valeria depois de recarregar a pagina */
+  tab(d) { ui.tab = d.t; ui.screen = null; ui.form = {}; if (d.t !== "pais") { ui.riddle = null; ui.unlocked = false; } },
   kid(d) { S.active = d.id; save(); ui.screen = null; },
   newkid() { ui.form = { passo: "novo" }; ui.screen = "welcome"; },
   back() { ui.screen = null; ui.form = {}; if (ctl) ctl.abort(); ui.explainLive = ""; },
@@ -1687,7 +1704,7 @@ const A = {
   pforgot() { newRiddle(); },
   rcancel() { ui.riddle = null; },
   rsolve() { const r = ui.riddle, v = ($("#rans") ? $("#rans").value : "").replace(/\D/g, ""); if (!r) return; if (+v !== r.a * r.b) { newRiddle(); return toast("N\u00e3o \u00e9 esse. Tente a conta nova."); } PINV = ""; savePin(); ui.unlocked = true; ui.riddle = null; toast("Senha removida. Escolha uma nova em Pais."); },
-  pset() { const v = ($("#pnew") ? $("#pnew").value : "").replace(/\D/g, ""); if (v.length !== 4) return toast("A senha precisa ter 4 n\u00fameros."); PINV = v; savePin(); ui.unlocked = true; toast("Senha guardada. Anote em algum lugar seguro."); },
+  pset() { const v = ($("#pnew") ? $("#pnew").value : "").replace(/\D/g, ""); if (v.length !== 4) return toast("A senha precisa ter 4 n\u00fameros."); PINV = v; savePin(); ui.unlocked = true; toast("Senha guardada: anote em lugar seguro. Ela passa a valer assim que você sair desta aba."); },
   poff() { confirmBox("Tirar a senha dos pais? Seu filho vai poder entrar aqui.", () => { PINV = ""; savePin(); }, "Tirar"); },
   pprovas() { ui.screen = "pprovas"; ui.form = {}; window.scrollTo(0, 0); },
   pprog() { ui.screen = "pprog"; window.scrollTo(0, 0); },
@@ -1697,9 +1714,9 @@ const A = {
   pcompartilhar() { ui.screen = "pcompartilhar"; ui.form = {}; window.scrollTo(0, 0); },
   ppais() { ui.screen = null; ui.form = {}; window.scrollTo(0, 0); },
   examdet(d) { ui.arg = d.id; ui.screen = "examdet"; window.scrollTo(0, 0); },
-  async iocopy() { copiar(await zipar(JSON.stringify(S)), "Código copiado! Mande para você mesma e cole no outro aparelho."); },
+  async iocopy() { copiar(await zipar(estadoParaLevar()), "Código copiado! Mande para você mesma e cole no outro aparelho."); },
   async iolite() { copiar(await zipar(estadoLeve()), "Cópia leve copiada! No outro aparelho, reenvie as fotos das páginas."); },
-  async ioshare() { compartilhar(await zipar(JSON.stringify(S)), "Semana de Prova — cópia de segurança"); },
+  async ioshare() { compartilhar(await zipar(estadoParaLevar()), "Semana de Prova — cópia de segurança"); },
   gshow() { ui.showKey = ui.showKey === "g" ? null : "g"; },
   rshow() { ui.showKey = ui.showKey === "r" ? null : "r"; },
   gcopy() { copiar(G.key || "", "Chave do Gemini copiada. Cole no outro aparelho, em Pais."); },
@@ -1719,7 +1736,7 @@ const A = {
     const raw = ($("#wio") ? $("#wio").value : ui.form.wio || "").trim();
     if (raw.length < 10) return toast("Cole o código primeiro.");
     let r; try { r = await lerCodigo(raw); } catch (e) { return toast("Não consegui ler esse código. Confira se copiou inteiro."); }
-    if (r.tipo === "copia") { S = r.dados; S.settings = S.settings || { minutes: 45, weekends: true }; save(); ui.screen = null; ui.form = {}; ui.tab = "hoje"; render(); return toast("Tudo restaurado neste aparelho!"); }
+    if (r.tipo === "copia") { aplicaPinDoCodigo(r.dados); S = r.dados; S.settings = S.settings || { minutes: 45, weekends: true }; save(); ui.screen = null; ui.form = {}; ui.tab = "hoje"; render(); return toast("Tudo restaurado neste aparelho!"); }
     if (!kid()) {
       if (!ui.form.pedeNome) { ui.form = { passo: "codigo", wio: raw, pedeNome: true, serieSugerida: r.dados.serie || "" }; render(); return; }
       const nome = ($("#kname") ? $("#kname").value : ui.form.name || "").trim(); if (!nome) return toast("Escreva o nome ou apelido da criança.");
@@ -1755,7 +1772,7 @@ const A = {
     const atual = S.kids.map(x => x.name).join(", ") || "ningu\u00e9m";
     chooseBox("Restaurar a c\u00f3pia?", [
       { label: "Primeiro salvar o que est\u00e1 aqui", pri: true, fn: () => { ui.form.io = "export"; toast("Copie este c\u00f3digo antes. Depois cole o outro e restaure."); } },
-      { label: "Substituir mesmo assim", fn: () => { S = s2; S.settings = S.settings || { minutes: 45, weekends: true }; save(); ui.form = {}; toast("Dados restaurados."); } },
+      { label: "Substituir mesmo assim", fn: () => { aplicaPinDoCodigo(s2); S = s2; S.settings = S.settings || { minutes: 45, weekends: true }; save(); ui.form = {}; toast(PINV ? "Dados restaurados. A senha dos pais veio junto." : "Dados restaurados."); } },
     ], "O c\u00f3digo traz: " + nomes + ". Vai substituir o que est\u00e1 neste aparelho: " + atual + ". A chave da IA n\u00e3o \u00e9 afetada. N\u00e3o tem como desfazer.");
   },
   

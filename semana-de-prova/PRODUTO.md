@@ -111,6 +111,8 @@ A senha não é segurança de verdade — é um obstáculo para a criança não 
 
 Antes de qualquer ação que apague de verdade — nova semana, remover criança, restaurar cópia —, o app diz **exatamente o que será perdido** (quantas provas, quantas partes, quantos quizzes com o histórico de erros) e oferece salvar uma cópia primeiro. **[hoje]**
 
+- A senha volta a valer **assim que a mãe sai da aba Pais**, sem precisar recarregar: no tablet, que fica aberto o dia inteiro, era por aí que a criança entrava. **[hoje]**
+- A senha viaja no código de “para outro aparelho meu”, então o tablet da criança chega já trancado. Código sem senha (versão antiga, ou mãe que não usa) continua funcionando. Ela não é segurança, e sim a tranca que impede a criança de apagar prova e roteiro sem querer. **[hoje]**
 ## 4.6 Vários aparelhos
 
 Cada aparelho é uma ilha: o que a criança faz no tablet dela não aparece no celular da mãe. Não há sincronização até o servidor da Fase 2. **[hoje]**

@@ -1331,5 +1331,79 @@ console.log("\n28. a segunda tentativa só quando adianta");
   eq(n.texto, 0, "sem começar outra leitura");
 }
 
+/* ================= 29. a senha dos pais tranca de verdade ================= */
+console.log("\n29. a senha dos pais tranca de verdade");
+{
+  const telaPais = (w, t) => { t.ui.tab = "pais"; w.render(); return w.document.getElementById("app").innerHTML; };
+
+  // --- sair da aba volta a trancar (o caso do tablet, que fica aberto o dia todo) ---
+  {
+    const { w, t } = await boot([]);
+    t.ui.form = { name: "Benja", grade: "4º ano" }; t.A.savekid();
+    t.ui.tab = "pais"; w.render();
+    ok(!w.eval("locked()"), "sem senha, a área dos pais está aberta");
+
+    t.ui.screen = "pais"; w.eval('document.body.insertAdjacentHTML("beforeend", \'<input id="pnew" value="1234">\')');
+    t.A.pset();
+    eq(w.eval("PINV"), "1234", "a senha foi guardada");
+    ok(!w.eval("locked()"), "logo depois de definir, quem está ali continua dentro");
+
+    // a mãe sai para a aba de estudar e devolve o tablet
+    t.A.tab({ t: "hoje" });
+    ok(w.eval("locked()"), "ao sair da aba, tranca — sem precisar recarregar a página");
+    ok(telaPais(w, t).includes("senha de 4 números"), "e a criança encontra a tela de senha");
+    ok(!telaPais(w, t).includes("Diário técnico"), "sem ver o que tem atrás dela");
+
+    // senha errada não passa
+    w.eval('document.body.insertAdjacentHTML("beforeend", \'<input id="pin" value="0000">\')');
+    t.A.punlock();
+    ok(w.eval("locked()"), "senha errada não entra");
+    w.eval('document.getElementById("pin").value = "1234"');
+    t.A.punlock();
+    ok(!w.eval("locked()"), "senha certa entra");
+
+    // e volta a trancar de novo na próxima saída
+    t.A.tab({ t: "provas" });
+    ok(w.eval("locked()"), "e tranca outra vez ao sair");
+  }
+
+  // --- a senha viaja no código para o aparelho da criança ---
+  {
+    const { w, t } = await boot([]);
+    t.ui.form = { name: "Benja", grade: "4º ano" }; t.A.savekid();
+    w.eval('PINV = "4321"; savePin();');
+    const codigo = await w.zipar(w.estadoParaLevar());
+    const lido = JSON.parse(await w.dezipar(codigo));
+    eq(lido.pin, "4321", "o código de 'outro aparelho meu' leva a senha junto");
+    ok(Array.isArray(lido.kids), "e os dados da criança como antes");
+
+    // no tablet do filho, que não tem senha nenhuma
+    const tablet = await boot([]);
+    eq(tablet.w.eval("PINV"), "", "o tablet começa sem senha");
+    tablet.w.eval('ui.unlocked = true');
+    tablet.t.ui.form.wio = codigo;
+    tablet.w.eval('document.body.insertAdjacentHTML("beforeend", \'<textarea id="wio">' + codigo + "</textarea>')");
+    await tablet.t.A.wgo();
+    eq(tablet.w.eval("PINV"), "4321", "ao colar o código, a senha chega junto");
+    ok(tablet.w.eval("locked()"), "e o tablet já fica trancado");
+    eq(tablet.t.S.kids[0].name, "Benja", "com os dados restaurados");
+    ok(!("pin" in tablet.t.S), "a senha não polui o estado salvo");
+  }
+
+  // --- código sem senha (versão antiga ou mãe que não usa) continua funcionando ---
+  {
+    const { w, t } = await boot([]);
+    t.ui.form = { name: "Lila", grade: "5º ano" }; t.A.savekid();
+    const codigo = await w.zipar(w.estadoParaLevar());
+    ok(!JSON.parse(await w.dezipar(codigo)).pin, "sem senha definida, nada de pin no código");
+
+    const outro = await boot([]);
+    outro.w.eval('document.body.insertAdjacentHTML("beforeend", \'<textarea id="wio">' + codigo + "</textarea>')");
+    await outro.t.A.wgo();
+    eq(outro.t.S.kids[0].name, "Lila", "o código sem senha restaura normalmente");
+    ok(!outro.w.eval("locked()"), "e o aparelho fica aberto, como antes");
+  }
+}
+
 console.log(`\n${passed} passaram, ${failed} falharam`);
 process.exit(failed ? 1 : 0);
