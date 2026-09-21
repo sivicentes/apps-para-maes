@@ -197,6 +197,10 @@ O app **oferece**, não manda. Todo o estudo de cada prova aparece de uma vez, e
 
 ## 9. O que a IA faz e o que não faz
 
+**Todo pedido passa pelo mesmo roteador**, inclusive explicação e quiz: IA rápida, depois servidor, e por último a chave do próprio aparelho. Isso importa porque o aparelho da mãe da turma não tem chave nenhuma — qualquer caminho que chame a chave direto simplesmente não funciona para ela.
+
+**Erro sem mensagem própria não existe.** Quando um código não tem texto escrito, a tela mostra o código e o detalhe técnico, pedindo que a mãe os relate. Um “não deu certo, tente de novo” genérico escondeu por dias um defeito real.
+
 Faz: lê comunicados e páginas (foto, PDF, Word, texto), assiste a vídeo público do YouTube, extrai provas e links, condensa o conteúdo, identifica de que material as páginas vieram, monta o roteiro, explica e cria perguntas.
 
 São duas IAs, com divisão clara: tudo que exige **enxergar** (foto, PDF, vídeo) vai para o Gemini, que é o único gratuito capaz de ler vídeo do YouTube direto do endereço. Roteiro, explicação e quiz trabalham só em cima do texto já extraído e vão para uma segunda IA mais rápida (Groq), seja pela chave do aparelho, seja pelo servidor. Se a segunda IA falhar ou não estiver ligada, tudo volta para o Gemini sozinho.

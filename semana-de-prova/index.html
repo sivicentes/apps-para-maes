@@ -493,8 +493,20 @@ const ERR = {
   empty_completion: "A IA respondeu em branco. Espere alguns segundos e tente de novo.",
   invalid_json: "A IA respondeu fora do formato esperado. Tente de novo.",
   bad_key2: "A chave do Groq nao foi aceita. Confira em Pais se ela foi colada inteira.",
+  upstream_error: "A IA recusou o pedido. Tente de novo em alguns segundos; se repetir, o Diário técnico (Pais › Avançado) mostra o motivo exato.",
+  sem_material: "Esta parte ainda não tem material guardado. Envie as páginas da prova primeiro.",
 };
-const errMsg = e => (String((e && e.code) || "").slice(0, 4) === "srv_" ? errServidor(e) : (e && e.code) === "sem_ia" ? "Ligue a inteligência artificial ou o servidor, na aba Pais." : (e && e.code) === "servidor_fora" ? "O servidor não respondeu. Confira o endereço em Pais." : (e && ERR[e.code]) || "Não deu certo desta vez. Tente de novo.") + (e && e.code === "bad_key" && e.message ? " (" + e.message + ")" : "");
+/* Erro sem mensagem própria vira "não deu certo", que não ajuda ninguém: foi
+   assim que o quiz quebrado passou despercebido. Agora, quando o código não
+   tem texto próprio, ele aparece — feio, mas dá para contar o que houve. */
+function errMsg(e) {
+  const c = String((e && e.code) || ""), det = String((e && e.message) || "").trim();
+  if (c.slice(0, 4) === "srv_") return errServidor(e);
+  if (c === "sem_ia") return "Ligue a inteligência artificial ou o servidor, na aba Pais.";
+  if (c === "servidor_fora") return "O servidor não respondeu. Confira o endereço em Pais.";
+  if (ERR[c]) return ERR[c] + (c === "bad_key" && det ? " (" + det + ")" : "");
+  return "Não deu certo desta vez. Tente de novo. Se repetir, mostre isto: " + (c || "erro sem código") + (det ? " — " + det.slice(0, 140) : "");
+}
 function confirmBox(msg, yes, label) { ui.confirm = { msg, yes, label }; }
 function busy(msg, sub) { ui.busy = { msg, sub: sub || "" }; render(); }
 function idle() { ui.busy = null; ctl = null; render(); }
@@ -1108,10 +1120,13 @@ async function explain(sid) {
   if (!temIA()) return toast("Para explicar, ligue a IA na aba Pais.");
   ui.explainLive = "Pensando…"; render(); ctl = new AbortController();
   try {
-    const r = await sample("Explique para uma criança o conteúdo desta sessão de estudo, como uma professora paciente e animada.\n" + sessionContext(s, ex) +
+    /* pelo roteador: Groq, servidor e, por último, a chave deste aparelho.
+       Chamar sample() direto quebrava em todo aparelho SEM chave própria —
+       que é exatamente o caso das mães da turma, e o do tablet do Benja. */
+    const texto = await askText("Explique para uma criança o conteúdo desta sessão de estudo, como uma professora paciente e animada.\n" + sessionContext(s, ex) +
       "\n\nFormato: texto simples em português do Brasil, SEM markdown e sem asteriscos. Comece com uma frase que resume a ideia principal. Depois de 3 a 6 tópicos curtos começando com \"• \", com exemplos do dia a dia. Termine com uma dica para lembrar na hora da prova. No máximo 180 palavras. Não invente fatos fora do material.",
-      { signal: ctl.signal, onText: ({ text }) => { ui.explainLive = text; const el = $("#explain"); if (el) el.textContent = text; } });
-    s.explain = r.text; ui.explainLive = ""; save(); render();
+      { onText: ({ text }) => { ui.explainLive = text; const el = $("#explain"); if (el) el.textContent = text; } });
+    s.explain = texto; ui.explainLive = ""; save(); render();
   } catch (e) { ui.explainLive = ""; render(); if (e.code !== "cancelled") toast(errMsg(e)); }
 }
 function quizPrompt(s, ex) {
@@ -1128,7 +1143,7 @@ function fetchQuiz(sid, fresh) {
   if (!fresh && quizJobs[sid]) return quizJobs[sid];
   const s = sessOf(sid), ex = s && examOf(s.examId);
   const job = (async () => {
-    const r = await sample.json(quizPrompt(s, ex), { cache: false });
+    const r = await askJSON(quizPrompt(s, ex), { cache: false });
     const qs = [];
     for (const q of (r && r.perguntas) || []) {
       if (!q || !q.pergunta || !Array.isArray(q.opcoes) || q.opcoes.length < 2) continue;

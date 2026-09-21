@@ -1902,5 +1902,91 @@ console.log("\n37. quando o material chega depois do roteiro");
   eq(w.roteiroDesatualizado(e2), false, "prova vinda de antes desta conta não acusa nada");
 }
 
+/* ================= 38. quiz e explicação no aparelho sem chave ================= */
+console.log("\n38. o quiz da mãe da turma (aparelho sem chave própria)");
+{
+  /* É o aparelho do Benja e o de toda mãe da turma: servidor ligado, chave
+     nenhuma no aparelho. O quiz e a explicação chamavam a chave direto e
+     quebravam com "não deu certo desta vez". */
+  async function tabletSemChave(respostas) {
+    const { w, t } = await boot([
+      { match: u => u.includes("porteiro.exemplo"), raw: true, reply: () => respostas.shift() },
+    ]);
+    t.ui.form = { name: "Benja", grade: "4º ano" }; t.A.savekid();
+    const k = t.S.kids[0];
+    const e = { id: "e1", subject: "Ciências", date: "2099-12-10", topics: "cadeia alimentar", pages: "p. 40 a 44", links: [], content: "", blocks: [], material: null, nPages: 0, misses: [], asked: [] };
+    k.exams.push(e);
+    w.addBlocks(e, null, [{ materia: "Ciências", assunto: "produtores", pagina: "40", conceitos: [], conteudo: "Produtores fazem fotossíntese." }]);
+    const s = w.mkSession(e, null, "estudo", "Ciências: produtores", 20, ["Leia a página 40."], 1);
+    k.sessions.push(s);
+    w.eval('SRV = { url: "https://porteiro.exemplo/", codigo: "TURMA4A", id: "ap1" };');
+    return { w, t, s, e, aviso: () => w.document.getElementById("toast").textContent };
+  }
+
+  // --- sem chave nenhuma no aparelho ---
+  {
+    const c = await tabletSemChave([]);
+    eq(c.w.eval("!!sample"), false, "o tablet não tem chave própria");
+    ok(c.w.eval("temIA()"), "mas tem IA, pelo servidor");
+  }
+
+  // --- o quiz passa pelo servidor ---
+  {
+    const QUIZ = JSON.stringify({ perguntas: [
+      { pergunta: "Quem faz fotossíntese?", opcoes: ["Produtores", "Fungos", "Aves", "Pedras"], correta: 0, explicacao: "Produtores usam a luz.", assunto: "produtores" },
+      { pergunta: "O que os produtores usam?", opcoes: ["Luz do sol", "Pedras", "Vento", "Gelo"], correta: 0, explicacao: "A luz.", assunto: "produtores" },
+    ] });
+    const c = await tabletSemChave([{ texto: QUIZ, ia: "groq", modelo: "llama-3.3-70b-versatile" }]);
+    await c.w.startQuiz(c.s.id);
+    eq(c.t.ui.screen, "quiz", "o quiz abre");
+    eq(c.t.ui.quiz.qs.length, 2, "com as duas perguntas");
+    ok(!c.aviso().includes("Não deu certo"), "sem o erro genérico");
+    const l = JSON.parse(c.w.eval("JSON.stringify(LOG[0])"));
+    eq(l.ia, "Servidor", "e o pedido foi pelo servidor");
+    eq(l.tarefa, "quiz", "registrado como quiz");
+  }
+
+  // --- a explicação também ---
+  {
+    const c = await tabletSemChave([{ texto: "A cadeia alimentar mostra quem come quem.", ia: "groq", modelo: "llama-3.3-70b-versatile" }]);
+    await c.w.explain(c.s.id);
+    ok(String(c.s.explain).includes("quem come quem"), "a explicação chega e é guardada");
+    ok(!c.aviso().includes("Não deu certo"), "sem erro genérico");
+    eq(JSON.parse(c.w.eval("JSON.stringify(LOG[0])")).ia, "Servidor", "pelo servidor também");
+  }
+
+  // --- quando o servidor recusa, a mensagem diz o porquê ---
+  {
+    const c = await tabletSemChave([{ erro: "cota", mensagem: "Limite de 120 pedidos por dia atingido neste aparelho." }]);
+    await c.w.startQuiz(c.s.id);
+    ok(c.aviso().includes("limite de uso de hoje"), "o motivo real aparece");
+    ok(!c.aviso().includes("Não deu certo"), "e não o recado genérico");
+  }
+}
+
+/* ================= 39. erro sem mensagem não pode virar "não deu certo" ================= */
+console.log("\n39. todo erro diz o que foi");
+{
+  const { w } = await boot([]);
+  const m = c => w.errMsg(c);
+
+  ok(m({ code: "upstream_error" }).includes("Diário técnico"), "upstream_error passa a ter mensagem própria");
+  ok(!m({ code: "upstream_error" }).includes("Não deu certo"), "e sai do balde genérico");
+  ok(m({ code: "truncated" }).includes("pela metade"), "os que já tinham texto continuam iguais");
+  ok(m({ code: "sem_ia" }).includes("aba Pais"), "sem IA continua orientando");
+  ok(m({ code: "srv_cota" }).includes("limite de uso de hoje"), "erro do servidor continua traduzido");
+
+  // um código novo, que ninguém mapeou: aparece, em vez de sumir
+  const novo = m({ code: "coisa_nova_qualquer", message: "detalhe técnico do Google" });
+  ok(novo.includes("coisa_nova_qualquer"), "código desconhecido aparece na tela");
+  ok(novo.includes("detalhe técnico do Google"), "com o detalhe que veio junto");
+  ok(novo.includes("mostre isto"), "pedindo para a mãe mostrar");
+
+  // erro sem código nenhum (um defeito de programação, como o do quiz)
+  const vazio = m(new TypeError("Cannot read properties of null"));
+  ok(vazio.includes("erro sem código"), "erro de programação também aparece");
+  ok(vazio.includes("Cannot read properties of null"), "com a pista técnica");
+}
+
 console.log(`\n${passed} passaram, ${failed} falharam`);
 process.exit(failed ? 1 : 0);
