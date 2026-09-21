@@ -255,6 +255,18 @@ function load() {
   return { v: 1, kids: [], active: null, settings: { minutes: 45, weekends: true } };
 }
 let S = load();
+/* Dados de antes desta conta: assume o roteiro em dia e passa a acompanhar
+   daqui em diante, para não acusar "desatualizado" sem motivo. */
+(function marcaPlanoAntigo() {
+  let mexeu = false;
+  for (const k of S.kids || []) for (const e of k.exams || []) {
+    if (typeof e.planN === "number") continue;
+    if (!(k.sessions || []).some(s => s.examId === e.id)) continue;
+    e.planN = Array.isArray(e.blocks) ? e.blocks.length : (e.content ? 1 : 0);
+    mexeu = true;
+  }
+  if (mexeu) { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (err) {} }
+})();
 function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { storageOk = false; } }
 const kid = () => S.kids.find(k => k.id === S.active) || null;
 const examOf = id => kid()?.exams.find(e => e.id === id) || null;
@@ -1003,14 +1015,45 @@ function basicSessions(ex, pace) {
   out.push(mkSession(ex, addDays(ex.date, -1), "revisao", ex.subject + ": revis\u00e3o para a prova", P.min, ["Releia suas anota\u00e7\u00f5es e os t\u00edtulos do material" + where + ".", "Refa\u00e7a um exerc\u00edcio que voc\u00ea achou dif\u00edcil.", "Fa\u00e7a o quiz de revis\u00e3o."], partes + 1));
   return out;
 }
+/* O que a IA precisa saber sobre o material desta prova. Antes ia só um
+   pedaço do começo do texto: com um módulo inteiro guardado, a IA via as
+   primeiras linhas e inventava o resto a partir do "cai" do comunicado — daí
+   um roteiro de adição e subtração para um material sobre combinações.
+   Agora vai a LISTA dos assuntos realmente guardados, que é compacta e é o
+   mapa fiel do que a criança tem em mãos. */
+function materialParaPlano(e) {
+  seedBlocks(e);
+  if (!e.blocks.length) return " | ATENÇÃO: o material ainda não foi enviado, monte a partir do que cai";
+  const assuntos = e.blocks
+    .map(b => (b.assunto || "sem título") + (b.pagina ? " (p. " + b.pagina + ")" : ""))
+    .join("; ").slice(0, 1000);
+  return " | ASSUNTOS REAIS DO MATERIAL GUARDADO, na ordem: " + assuntos +
+    " | trecho do material: " + String(e.content || "").slice(0, 1600).replace(/\s+/g, " ");
+}
+/* O roteiro é uma foto do material no momento em que foi montado. Material
+   que chega depois não entra nele sozinho, e a mãe não tem como saber. */
+function roteiroDesatualizado(e) {
+  const k = kid(); if (!k || !e) return false;
+  seedBlocks(e);
+  if (!k.sessions.some(s => s.examId === e.id)) return false;
+  return typeof e.planN === "number" && e.blocks.length > e.planN;
+}
+function avisoRoteiroVelho(e) {
+  if (!roteiroDesatualizado(e)) return "";
+  const novos = e.blocks.length - e.planN;
+  return '<div class="card alert"><h3>⚠️ O roteiro está desatualizado</h3>' +
+    '<p class="small">Chegaram <b>' + novos + ' trecho(s) de material</b> depois que este roteiro foi montado. As partes atuais não falam deles.</p>' +
+    '<div class="acts"><button class="btn" data-a="planone" data-id="' + e.id + '">🔄 Refazer o roteiro de ' + esc(e.subject) + "</button></div></div>";
+}
 function planPrompt(exams, t, pace, opts) {
   return "Monte um roteiro de estudos para uma crian\u00e7a do " + kid().grade + " (Brasil) em semana de provas. Hoje \u00e9 " + nice(t) + " (" + t + ").\n" +
     "Divida o estudo de cada prova em PARTES numeradas, em ordem de estudo. N\u00c3O distribua as partes por dia e N\u00c3O cite datas: a crian\u00e7a escolhe quando fazer cada parte.\n" +
     paceRules(pace) + "\n" +
     (opts && opts.priorizar ? "ATEN\u00c7\u00c3O: h\u00e1 mais conte\u00fado do que tempo at\u00e9 a prova. Ordene come\u00e7ando pelo que tem mais chance de cair, e escreva \"(extra)\" no fim do t\u00edtulo das partes menos essenciais.\n" : "") + "\nPROVAS:\n" +
-    exams.map(e => "- id " + e.id + " | " + e.subject + " | prova em " + e.date + " | cai: " + (e.topics || "n\u00e3o informado") + " | material indicado: " + (e.pages || "n\u00e3o informado") + (linksOf(e).length ? " | a professora indicou " + linksOf(e).length + " link(s): " + linksOf(e).map(l => (isVideo(l.url) ? "v\u00eddeo" : "site") + (l.label ? " (" + l.label + ")" : "")).join(", ") : "") + (e.content ? " | trecho do material guardado: " + e.content.slice(0, 1100).replace(/\s+/g, " ") : " | ATEN\u00c7\u00c3O: o material ainda n\u00e3o foi enviado")).join("\n") +
+    exams.map(e => "- id " + e.id + " | " + e.subject + " | prova em " + e.date + " | cai: " + (e.topics || "n\u00e3o informado") + " | material indicado: " + (e.pages || "n\u00e3o informado") + (linksOf(e).length ? " | a professora indicou " + linksOf(e).length + " link(s): " + linksOf(e).map(l => (isVideo(l.url) ? "v\u00eddeo" : "site") + (l.label ? " (" + l.label + ")" : "")).join(", ") : "") + materialParaPlano(e)).join("\n") +
     "\n\nREGRAS:\n" +
     "1. Cada prova vira de 2 a 8 partes, cobrindo TODO o material guardado, sem deixar assunto de fora e sem repetir conte\u00fado entre partes.\n" +
+    "1b. Baseie as partes nos ASSUNTOS REAIS DO MATERIAL GUARDADO. O campo \"cai\" serve s\u00f3 para priorizar. Se os dois n\u00e3o baterem, siga o material: \u00e9 ele que a crian\u00e7a tem em m\u00e3os. NUNCA escreva uma parte sobre assunto que n\u00e3o esteja no material guardado.\n" +
     "2. A \u00daLTIMA parte de cada prova \u00e9 do tipo \"revisao\" e revisa a mat\u00e9ria inteira. Todas as outras s\u00e3o do tipo \"estudo\".\n" +
     "3. Numere em \"ordem\" come\u00e7ando em 1, do mais b\u00e1sico ao mais avan\u00e7ado.\n" +
     "4. Cada parte tem um foco diferente e cita as p\u00e1ginas e os assuntos reais daquela parte.\n" +
@@ -1045,6 +1088,8 @@ async function makePlan(onlyId, opts) {
     } catch (e) { if (e.code === "cancelled") return idle(); toast(errMsg(e) + " Montei um roteiro simples no lugar."); }
   }
   for (const ex of exams) if (!sessions.some(s => s.examId === ex.id)) sessions.push(...basicSessions(ex, pace));
+  /* foto do material no momento do roteiro, para saber depois se ele envelheceu */
+  for (const ex of exams) { seedBlocks(ex); ex.planN = ex.blocks.length; }
   k.sessions = kept.concat(sessions).sort((a, b) => {
     const da = (k.exams.find(e => e.id === a.examId) || {}).date || "9", db = (k.exams.find(e => e.id === b.examId) || {}).date || "9";
     return da.localeCompare(db) || (a.ord || 0) - (b.ord || 0);
@@ -1409,7 +1454,7 @@ function provasBlock() {
       (validD(e.date) ? '<div class="small muted">' + esc(nice(e.date)) + "</div>" : "") +
       (e.topics ? '<p class="small" style="margin:6px 0 0">' + esc(e.topics.slice(0, 110)) + (e.topics.length > 110 ? "…" : "") + "</p>" : "") +
       '<div class="chips">' +
-      (noRot ? '<span class="tag ok">no roteiro</span>' : '<span class="tag">fora do roteiro</span>') +
+      (noRot ? (roteiroDesatualizado(e) ? '<span class="tag bad">roteiro desatualizado</span>' : '<span class="tag ok">no roteiro</span>') : '<span class="tag">fora do roteiro</span>') +
       (matResumo(e) ? '<span class="tag ok">' + esc(matResumo(e).texto) + "</span>" : '<span class="tag bad">sem material</span>') +
       (!validD(e.date) ? '<span class="tag bad">falta a data</span>' : "") +
       (c ? '<span class="tag bad">falta p. ' + esc(c.texto.slice(0, 16)) + "</span>" : "") +
@@ -1429,6 +1474,7 @@ function vExamDet() {
     (e.pages ? '<p class="small muted" style="margin-top:6px"><b>Estudar:</b> ' + esc(e.pages) + "</p>" : "") +
     (matLabel(e) ? '<p class="small muted">📚 ' + esc(matLabel(e)) + "</p>" : "") + linksHtml(e) +
     '<div class="acts"><button class="btn ghost" data-a="editexam" data-id="' + e.id + '">Editar esta prova</button></div></div>';
+  h += avisoRoteiroVelho(e);
   const mr = matResumo(e);
   h += '<div class="card"><h2>Material de estudo</h2><p class="small">' + (mr ? '<span class="tag ok">' + esc(mr.texto) + "</span>" : '<span class="tag bad">nada enviado ainda</span>') + "</p>" +
     (mr ? '<p class="small muted">Fica guardado neste aparelho, em texto — as fotos não são salvas. Para ver trecho por trecho, abra <b>O que a IA entendeu</b>.</p>' : "") +

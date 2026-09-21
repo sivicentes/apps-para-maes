@@ -1810,5 +1810,97 @@ console.log("\n35. o módulo inteiro de Inglês, em muitas fotos");
   }
 }
 
+/* ================= 36. o roteiro tem que falar do material de verdade ================= */
+console.log("\n36. o roteiro segue o material, não o palpite");
+{
+  const { w, t } = await boot([]);
+  t.ui.form = { name: "Lila", grade: "5º ano" }; t.A.savekid();
+  const k = t.S.kids[0];
+  /* o caso real: o comunicado fala de contas, o material é sobre combinações */
+  const e = { id: "e1", subject: "Matemática", date: "2099-12-10", topics: "Contas de adição e subtração.", pages: "p. 4 a 9", links: [], content: "", blocks: [], material: null, nPages: 0, misses: [], asked: [] };
+  k.exams.push(e);
+
+  // sem material, o prompt avisa a IA disso
+  ok(w.materialParaPlano(e).includes("ainda não foi enviado"), "sem material, a IA é avisada");
+
+  w.addBlocks(e, null, [
+    { materia: "Matemática", assunto: "combinações", pagina: "4", conceitos: ["possibilidades"], conteudo: "Combinação é contar de quantos jeitos dá para juntar." },
+    { materia: "Matemática", assunto: "árvore de possibilidades", pagina: "5", conceitos: [], conteudo: "A árvore mostra todos os caminhos possíveis." },
+    { materia: "Matemática", assunto: "problemas de combinação", pagina: "6", conceitos: [], conteudo: "Com 3 camisas e 2 calças dá 6 combinações." },
+  ]);
+
+  const md = w.materialParaPlano(e);
+  ok(md.includes("ASSUNTOS REAIS"), "o prompt manda a lista dos assuntos guardados");
+  ok(md.includes("combinações (p. 4)"), "com o assunto e a página de cada trecho");
+  ok(md.includes("árvore de possibilidades"), "todos eles, não só o primeiro");
+  ok(md.includes("problemas de combinação"), "inclusive o último");
+
+  const pr = w.planPrompt([e], "2099-12-01", "normal", {});
+  ok(pr.includes("ASSUNTOS REAIS DO MATERIAL GUARDADO"), "o roteiro recebe o mapa do material");
+  ok(pr.includes("siga o material"), "com a ordem de seguir o material quando não bate com o que cai");
+  ok(pr.includes("NUNCA escreva uma parte sobre assunto que não esteja no material"), "e a proibição de inventar assunto");
+  ok(pr.includes("Contas de adição e subtração"), "o que a professora escreveu continua lá, para priorizar");
+
+  // material longo: a lista dos assuntos não é cortada logo no começo
+  for (let i = 0; i < 12; i++) w.addBlocks(e, null, [{ materia: "Matemática", assunto: "assunto número " + i, pagina: String(10 + i), conceitos: [], conteudo: "Conteúdo do assunto " + i + ", com bastante texto para encher o material guardado e empurrar o resto para o fim." }]);
+  const md2 = w.materialParaPlano(e);
+  ok(md2.includes("assunto número 11"), "com 15 trechos, o último ainda aparece na lista");
+  ok(md2.includes("combinações (p. 4)"), "e o primeiro continua lá");
+}
+
+/* ================= 37. roteiro montado antes do material ================= */
+console.log("\n37. quando o material chega depois do roteiro");
+{
+  const { w, t } = await boot([]);
+  t.ui.form = { name: "Lila", grade: "5º ano" }; t.A.savekid();
+  const k = t.S.kids[0];
+  const e = { id: "e1", subject: "Matemática", date: "2099-12-10", topics: "Contas.", pages: "p. 4 a 9", links: [], content: "", blocks: [], material: null, nPages: 0, misses: [], asked: [] };
+  k.exams.push(e);
+
+  eq(w.roteiroDesatualizado(e), false, "sem roteiro, não há o que desatualizar");
+
+  // roteiro montado com o material que havia na hora
+  w.addBlocks(e, null, [{ materia: "Matemática", assunto: "contas", pagina: "4", conceitos: [], conteudo: "Somar é juntar." }]);
+  k.sessions.push(w.mkSession(e, null, "estudo", "Matemática: contas", 20, ["Leia a página 4."], 1));
+  e.planN = e.blocks.length;
+  eq(w.roteiroDesatualizado(e), false, "recém-montado, está em dia");
+
+  t.ui.tab = "pais"; t.ui.unlocked = true; t.ui.screen = "pprovas"; w.render();
+  let html = w.document.getElementById("app").innerHTML;
+  ok(html.includes("no roteiro"), "a prova aparece como no roteiro");
+  ok(!html.includes("roteiro desatualizado"), "sem alarme falso");
+
+  // chega material novo depois
+  w.addBlocks(e, null, [
+    { materia: "Matemática", assunto: "combinações", pagina: "5", conceitos: [], conteudo: "Combinação é contar jeitos de juntar." },
+    { materia: "Matemática", assunto: "árvore de possibilidades", pagina: "6", conceitos: [], conteudo: "A árvore mostra os caminhos." },
+  ]);
+  eq(w.roteiroDesatualizado(e), true, "agora o roteiro está atrás do material");
+
+  t.ui.screen = "pprovas"; w.render();
+  html = w.document.getElementById("app").innerHTML;
+  ok(html.includes("roteiro desatualizado"), "o cartão da prova avisa");
+
+  t.ui.screen = "examdet"; t.ui.arg = "e1"; w.render();
+  html = w.document.getElementById("app").innerHTML;
+  ok(html.includes("O roteiro está desatualizado"), "e o detalhe da prova também");
+  ok(html.includes("2 trecho(s) de material"), "dizendo quantos trechos entraram depois");
+  ok(html.includes("Refazer o roteiro de Matemática"), "com o botão para refazer");
+
+  // refeito, o aviso some
+  e.planN = e.blocks.length;
+  eq(w.roteiroDesatualizado(e), false, "depois de refazer, volta a ficar em dia");
+  t.ui.screen = "examdet"; w.render();
+  ok(!w.document.getElementById("app").innerHTML.includes("O roteiro está desatualizado"), "e o aviso some da tela");
+
+  // dado antigo (sem planN) não dispara alarme falso
+  const e2 = { id: "e2", subject: "História", date: "2099-12-11", topics: "", pages: "", links: [], content: "", blocks: [], material: null, nPages: 0, misses: [], asked: [] };
+  k.exams.push(e2);
+  w.addBlocks(e2, null, [{ materia: "História", assunto: "vilas", pagina: "8", conceitos: [], conteudo: "As vilas coloniais." }]);
+  k.sessions.push(w.mkSession(e2, null, "estudo", "História", 20, ["Leia."], 1));
+  delete e2.planN;
+  eq(w.roteiroDesatualizado(e2), false, "prova vinda de antes desta conta não acusa nada");
+}
+
 console.log(`\n${passed} passaram, ${failed} falharam`);
 process.exit(failed ? 1 : 0);

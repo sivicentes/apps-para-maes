@@ -159,6 +159,9 @@ O app **oferece**, não manda. Todo o estudo de cada prova aparece de uma vez, e
 
 ## 6. Regras do roteiro
 
+- O roteiro é montado a partir dos **assuntos realmente guardados** do material, não só do que o comunicado disse que cai. A IA recebe a lista dos trechos com suas páginas; quando o comunicado e o material não batem, ela segue o material, que é o que a criança tem em mãos, e não pode escrever parte sobre assunto que não esteja ali.
+- O roteiro é uma **foto do material no momento em que foi montado**. Material que chega depois não entra nele sozinho, então a prova passa a mostrar *“roteiro desatualizado”*, dizendo quantos trechos chegaram desde então, com o botão de refazer. Refazer é decisão da mãe: pode custar cota, e o progresso das partes já feitas é preservado.
+
 - Cada prova vira de 2 a 8 partes numeradas, em ordem de estudo, do mais básico ao mais avançado. As partes cobrem todo o material guardado, sem repetir conteúdo entre elas.
 - **As partes não têm dia marcado.** A criança escolhe quando fazer cada uma. A única com data é a revisão, sempre a última, colocada na véspera da prova.
 - **Ritmo** (por criança: calmo, normal ou puxado) define quanto conteúdo cabe em cada parte e quantos passos ela tem. Ritmo calmo faz mais partes menores, com repetição; ritmo puxado faz menos partes maiores. É a régua certa para criança que precisa de mais tempo — aumentar o tempo máximo por dia não resolve isso.
