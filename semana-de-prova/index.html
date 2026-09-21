@@ -806,27 +806,69 @@ async function readChunk(ex, extraText, images) {
     return { material: null, blocos: [{ materia: ex.subject, assunto: "", pagina: "", conceitos: [], conteudo: t }] };
   }
 }
+/* Uma leva de fotos. Quando o material é denso (um módulo inteiro, com as
+   atividades nas páginas seguintes), a resposta estoura o limite e vinha
+   "cortado": em vez de perder a leva, divide em duas e tenta de novo. */
+async function leLeva(ex, imgs) {
+  try {
+    const r = await readChunk(ex, "", imgs);
+    return addBlocks(ex, r.material, r.blocos);
+  } catch (e) {
+    const cortou = e && (e.code === "truncated" || e.code === "srv_cortado");
+    if (!cortou || imgs.length < 2) throw e;
+    const meio = Math.ceil(imgs.length / 2);
+    busy("Muito conteúdo numa vez só…", "Dividindo em partes menores e tentando de novo.");
+    const a = await leLeva(ex, imgs.slice(0, meio));
+    const b = await leLeva(ex, imgs.slice(meio));
+    return { added: a.added + b.added, unreadable: a.unreadable + b.unreadable };
+  }
+}
 async function readPages(examId, files) {
   const ex = examOf(examId); if (!ex) return;
   if (!temIA()) return toast("Para ler as páginas, ligue a IA na aba Pais.");
   if (!files || !files.length) return toast("Nenhuma página para ler.");
   busy("Preparando as páginas…");
+  let unreadable = 0, added = 0, lidas = 0, erro = null;
   try {
     const g = await gather(files);
     if (g.images.length && !canImages()) { idle(); return toast(ERR.images_unavailable); }
     if (!g.text && !g.images.length) { idle(); return toast(g.failed.length ? "Não consegui abrir: " + g.failed.join(", ") + ". Envie fotos das páginas." : "Nenhuma página para ler."); }
-    let count = 0, unreadable = 0, added = 0;
-    if (g.text) { busy("Lendo o material\u2026"); const r = await readChunk(ex, g.text, null); const a = addBlocks(ex, r.material, r.blocos); added += a.added; unreadable += a.unreadable; count += (g.text.match(/\[P\u00e1gina/g) || [1]).length; }
+    if (g.text) {
+      busy("Lendo o material…");
+      const r = await readChunk(ex, g.text, null); const a = addBlocks(ex, r.material, r.blocos);
+      added += a.added; unreadable += a.unreadable; save();
+    }
     const per = Math.min(3, Math.max(1, imgMax()));
     for (let i = 0; i < g.images.length; i += per) {
       const part = g.images.slice(i, i + per);
-      busy("Lendo as p\u00e1ginas de " + ex.subject + "\u2026", "P\u00e1gina " + (i + 1) + (part.length > 1 ? " a " + (i + part.length) : "") + " de " + g.images.length);
-      const r = await readChunk(ex, "", part); const a = addBlocks(ex, r.material, r.blocos); added += a.added; unreadable += a.unreadable; count += part.length;
+      busy("Lendo as páginas de " + ex.subject + "…", "Página " + (i + 1) + (part.length > 1 ? " a " + (i + part.length) : "") + " de " + g.images.length);
+      try {
+        const a = await leLeva(ex, part);
+        added += a.added; unreadable += a.unreadable; lidas += part.length;
+        save();   /* guarda leva a leva: uma falha no meio não apaga o que já entrou */
+      } catch (e) {
+        if (e && e.code === "cancelled") throw e;
+        erro = e; break;
+      }
     }
-    ui.files = []; ui.filesDe = null; ui.screen = null; save(); idle();   /* nPages vem dos blocos, em addBlocks */
-    const mat = matLabel(ex);
-    toast(unreadable ? unreadable + " foto(s) ficaram ileg\u00edveis. Tire de novo, com luz e sem cortar a p\u00e1gina." : !added ? "Esse material j\u00e1 estava guardado." : count + " p\u00e1gina(s) lidas!" + (mat ? " Material: " + mat + "." : ""));
-  } catch (e) { idle(); if (e.code !== "cancelled") toast(errMsg(e)); }
+  } catch (e) { idle(); if (!e || e.code !== "cancelled") toast(errMsg(e)); return; }
+
+  const total = ui.files.length;
+  const soFotos = files.every(f => String((f && f.type) || "").startsWith("image/"));
+  if (erro) {
+    /* deixa na fila só o que não foi lido, para a segunda tentativa não gastar
+       cota relendo o que já entrou */
+    if (soFotos && lidas) ui.files = ui.files.slice(lidas);
+    save(); idle();
+    return toast(lidas
+      ? "Li e guardei " + lidas + " de " + total + " página(s). " + errMsg(erro) + " As que faltaram continuam na fila: toque em Ler de novo."
+      : errMsg(erro));
+  }
+  ui.files = []; ui.filesDe = null; ui.screen = null; save(); idle();
+  const mat = matLabel(ex);
+  toast(unreadable ? unreadable + " foto(s) ficaram ilegíveis. Tire de novo, com luz e sem cortar a página."
+    : !added ? "Esse material já estava guardado."
+    : lidas + " página(s) lidas!" + (mat ? " Material: " + mat + "." : ""));
 }
 
 /* ============ 2b. vídeo do YouTube ============ */

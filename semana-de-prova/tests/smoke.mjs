@@ -1723,5 +1723,92 @@ console.log("\n34. o comunicado de Matemática do Caderno 3");
   ok(pr.includes("Multiplicação 10, 100 e 1000"), "com o exemplo real de número que não é página");
 }
 
+/* ================= 35. muitas fotos de uma vez ================= */
+console.log("\n35. o módulo inteiro de Inglês, em muitas fotos");
+{
+  /* prepara uma prova com N fotos na fila e controla o que cada leva responde */
+  async function cena(nFotos, respostaPorLeva) {
+    const { w, t } = await boot([]);
+    t.ui.form = { name: "Benja", grade: "4º ano" }; t.A.savekid();
+    const e = { id: "e1", subject: "Inglês", date: "2099-12-10", topics: "", pages: "p. 4 a 6", links: [], content: "", blocks: [], material: null, nPages: 0, misses: [], asked: [] };
+    t.S.kids[0].exams.push(e);
+    w.eval('SRV = { url: "https://porteiro.exemplo/", codigo: "C", id: "ap1" };');   // liga a IA pelo servidor
+    const fotos = Array.from({ length: nFotos }, (_, i) => ({ name: "pagina-" + (i + 1) + ".jpg", type: "image/jpeg" }));
+    t.A.pages({ id: "e1" });
+    fotos.forEach(f => t.ui.files.push(f));
+    w.gather = async fs => ({ text: "", images: fs.map((f, i) => ({ type: "image/jpeg", i })), failed: [] });
+    const levas = [];
+    w.readChunk = async (ex, txt, imgs) => {
+      levas.push(imgs.length);
+      const r = respostaPorLeva(levas.length, imgs);
+      if (r instanceof Error || (r && r.code)) throw r;
+      return r;
+    };
+    const bloco = (n, pagina) => ({ material: null, blocos: [{ materia: "Inglês", assunto: "assunto " + n, pagina, conceitos: [], conteudo: "Conteúdo da página " + pagina + "." }] });
+    return { w, t, e, levas, bloco, aviso: () => w.document.getElementById("toast").textContent };
+  }
+
+  // --- tudo certo: 9 fotos em 3 levas ---
+  {
+    const c = await cena(9, n => ({ material: null, blocos: [{ materia: "Inglês", assunto: "a" + n, pagina: String(n), conceitos: [], conteudo: "Conteúdo " + n + "." }] }));
+    await c.w.readPages("e1", c.t.ui.files.slice());
+    eq(c.levas.join(","), "3,3,3", "nove fotos viram três levas de três");
+    eq(c.e.blocks.length, 3, "e o material das três entrou");
+    eq(c.t.ui.files.length, 0, "a fila é esvaziada no fim");
+    ok(c.aviso().includes("9 página(s) lidas"), "avisa quantas foram lidas");
+  }
+
+  // --- falha no meio: o que já entrou fica salvo, o resto continua na fila ---
+  {
+    const c = await cena(9, (n, imgs) => (n === 2 ? { code: "srv_limite_dia" } : { material: null, blocos: [{ materia: "Inglês", assunto: "a" + n, pagina: String(n), conceitos: [], conteudo: "Conteúdo " + n + "." }] }));
+    await c.w.readPages("e1", c.t.ui.files.slice());
+    eq(c.e.blocks.length, 1, "o que foi lido antes da falha está guardado");
+    eq(c.e.nPages, 1, "e contado");
+    eq(c.t.ui.files.length, 6, "as seis que faltaram continuam na fila");
+    eq(c.t.ui.files[0].name, "pagina-4.jpg", "a fila recomeça exatamente de onde parou");
+    ok(c.aviso().includes("Li e guardei 3 de 9"), "o aviso diz quantas entraram");
+    ok(c.aviso().includes("continuam na fila"), "e que dá para continuar de onde parou");
+    ok(c.aviso().includes("limite gratuito de hoje"), "dizendo o motivo real da parada");
+  }
+
+  // --- falha logo na primeira leva: nada de aviso confuso ---
+  {
+    const c = await cena(6, () => ({ code: "srv_limite_dia" }));
+    await c.w.readPages("e1", c.t.ui.files.slice());
+    eq(c.e.blocks.length, 0, "nada foi guardado");
+    eq(c.t.ui.files.length, 6, "a fila inteira continua lá");
+    ok(!c.aviso().includes("Li e guardei"), "sem dizer que guardou algo");
+    ok(c.aviso().includes("limite gratuito de hoje"), "só o motivo");
+  }
+
+  // --- material denso demais: divide a leva em vez de perder tudo ---
+  {
+    /* a primeira leva de 3 estoura; dividida em 2 + 1, passa */
+    const c = await cena(3, (n, imgs) => (imgs.length === 3 ? { code: "truncated" } : { material: null, blocos: [{ materia: "Inglês", assunto: "parte " + n, pagina: String(n), conceitos: [], conteudo: "Conteúdo da parte " + n + "." }] }));
+    await c.w.readPages("e1", c.t.ui.files.slice());
+    eq(c.levas.join(","), "3,2,1", "tentou 3, cortou, e refez em 2 e 1");
+    eq(c.e.blocks.length, 2, "e o material das duas partes entrou");
+    eq(c.t.ui.files.length, 0, "a fila terminou vazia: deu certo");
+    ok(c.aviso().includes("3 página(s) lidas"), "sem erro nenhum para ela");
+  }
+
+  // --- se nem uma foto sozinha couber, aí o erro sobe ---
+  {
+    const c = await cena(3, () => ({ code: "truncated" }));
+    await c.w.readPages("e1", c.t.ui.files.slice());
+    eq(c.levas.join(","), "3,2,1", "divide até o limite, e para");
+    ok(c.aviso().includes("metade"), "e aí sim avisa que a resposta veio cortada");
+    eq(c.t.ui.files.length, 3, "sem perder as fotos");
+  }
+
+  // --- cancelar continua cancelando, sem aviso de erro ---
+  {
+    const c = await cena(6, n => (n === 1 ? { code: "cancelled" } : {}));
+    c.w.document.getElementById("toast").textContent = "";
+    await c.w.readPages("e1", c.t.ui.files.slice());
+    eq(c.aviso(), "", "cancelar não vira mensagem de erro");
+  }
+}
+
 console.log(`\n${passed} passaram, ${failed} falharam`);
 process.exit(failed ? 1 : 0);
