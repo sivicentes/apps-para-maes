@@ -12,7 +12,8 @@
     "servidor:kv": "wrangler kv namespace create USO --config servidor/wrangler.toml",
     "servidor:conferir": "wrangler deploy --dry-run --config servidor/wrangler.toml",
     "servidor:publicar": "wrangler deploy --config servidor/wrangler.toml",
-    "servidor:log": "wrangler tail --config servidor/wrangler.toml"
+    "servidor:log": "wrangler tail --config servidor/wrangler.toml",
+    "servidor:diario": "wrangler kv key get diario --binding KV --remote --config servidor/wrangler.toml"
   },
   "repository": {
     "type": "git",

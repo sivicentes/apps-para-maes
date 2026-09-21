@@ -451,6 +451,32 @@ console.log("\n12. a lista de modelos cobre a familia Flash inteira");
   eq(chamadas.length, 1, "e no pedido seguinte vai direto nele, sem reexperimentar os esgotados");
 }
 
+console.log("\n13. quando os Flash acabam, os Lite seguram o dia");
+{
+  /* no gratuito cada Flash da 20 pedidos/dia, mas os Flash Lite dao 500.
+     Sem eles na lista o app parava a tarde inteira com cota sobrando. */
+  const cheio = "You exceeded your current quota: 20 requests per day per model";
+  const e429 = { ok: false, status: 429, json: async () => ({ error: { message: cheio } }) };
+  const KV = kvFalso();
+  geminiFalso(u => /lite/.test(u) ? RESP("o Lite leu as paginas") : e429);
+  let r = await worker.fetch(pedido({ ...CORPO, fotos: [{ tipo: "image/jpeg", dados: "AAAA" }] }), ENV({ KV }));
+  const d = await r.json();
+  eq(d.texto, "o Lite leu as paginas", "com todos os Flash no teto, o Lite atende");
+  ok(/lite/.test(d.modelo), "e a resposta diz que foi um Lite: " + d.modelo);
+  ok(d.modelo !== "gemini-3.8-flash", "nao ficou preso no primeiro da lista");
+
+  // no pedido seguinte vai direto no Lite: os esgotados estao de castigo
+  geminiFalso(u => /lite/.test(u) ? RESP("o Lite leu as paginas") : e429);
+  r = await worker.fetch(pedido({ ...CORPO, fotos: [{ tipo: "image/jpeg", dados: "AAAA" }] }), ENV({ KV }));
+  eq(chamadas.length, 1, "sem reexperimentar os cinco esgotados, e sem subir as fotos de novo");
+  ok(/lite/.test(chamadas[0].url), "indo direto no que funciona");
+
+  // o Flash continua sendo o preferido quando tem cota
+  geminiFalso(RESP("o Flash completo leu"));
+  r = await worker.fetch(pedido(CORPO), ENV());
+  eq((await r.json()).modelo, "gemini-3.8-flash", "com cota sobrando, comeca pelo que le melhor");
+}
+
 globalThis.fetch = real;
 console.log(`\n${passou} passaram, ${falhou} falharam`);
 process.exit(falhou ? 1 : 0);

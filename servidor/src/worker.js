@@ -22,7 +22,15 @@ const GAPI = "https://generativelanguage.googleapis.com/v1beta/models/";
    dia inteiro de uso: com 3.7 e 3.6 de fora, o app parava enquanto eles ainda
    tinham pedidos sobrando. Modelo que a conta nao tem responde 404 e sai da
    frente sozinho, sem custo. */
-const MODELOS = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-flash-latest", "gemini-2.5-flash"];
+const MODELOS = [
+  /* primeiro os Flash completos, que leem melhor. Teto: 20 pedidos/dia CADA */
+  "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3-flash",
+  /* depois os Lite: leem um pouco menos bem, mas o teto e 500 pedidos/dia
+     cada, 25x mais. Sao eles que seguram o dia quando os de cima acabam. */
+  "gemini-3.5-flash-lite", "gemini-3.1-flash-lite",
+  /* rede de seguranca, caso a conta tenha nomes antigos */
+  "gemini-flash-latest", "gemini-flash-lite-latest", "gemini-2.5-flash",
+];
 
 /* segunda IA: so texto, e bem mais rapida. Roteiro, explicacao e quiz
    passam por aqui quando a GROQ_KEY estiver configurada. */
@@ -101,6 +109,20 @@ async function poeDeCastigo(env, atuais, modelo, seg) {
 /* quem nao esta de castigo vem primeiro; os de castigo ficam no fim, nunca
    fora, para o app nao ficar sem resposta se todos estiverem no limite */
 const ordemPorDescanso = (lista, parados) => [...lista.filter(m => !parados[m]), ...lista.filter(m => parados[m])];
+
+/* Diario de bordo do servidor, so para diagnostico: guarda o QUE aconteceu,
+   nunca o CONTEUDO. Vao para ca hora, modelo, status HTTP e o motivo que o
+   Google ou o Groq deram. NAO vao: o texto do pedido, as fotos, as chaves,
+   o codigo de acesso nem o id do aparelho. Ultimos 30, apagados em 3 dias.
+   Leitura: npm run servidor:diario */
+async function anota(env, evento) {
+  if (!env.KV) return;
+  try {
+    const antes = JSON.parse((await env.KV.get("diario")) || "[]");
+    antes.unshift({ t: new Date().toISOString().slice(5, 19).replace("T", " "), ...evento });
+    await env.KV.put("diario", JSON.stringify(antes.slice(0, 30)), { expirationTtl: 60 * 60 * 72 });
+  } catch (e) {}
+}
 
 /* teto diario por aparelho. Sem KV ligado, nao conta (e avisa na resposta). */
 async function cota(env, codigo, aparelho) {
@@ -231,17 +253,21 @@ export default {
     if (!env.GEMINI_KEY && !env.GROQ_KEY) return resp({ erro: "sem_chave", mensagem: "O servidor esta sem a chave configurada." }, 500, origem, env);
 
     const c = await cota(env, codigo, String(p.aparelho || "").slice(0, 40));
-    if (!c.ok) return resp({ erro: "cota", mensagem: "Limite de " + c.teto + " pedidos por dia atingido neste aparelho. Amanha volta.", usado: c.usado, teto: c.teto }, 429, origem, env);
+    if (!c.ok) {
+      await anota(env, { ok: false, erro: "cota_aparelho", usado: c.usado, teto: c.teto });
+      return resp({ erro: "cota", mensagem: "Limite de " + c.teto + " pedidos por dia atingido neste aparelho. Amanha volta.", usado: c.usado, teto: c.teto }, 429, origem, env);
+    }
 
     /* texto puro vai primeiro na IA rapida; foto e video pulam direto */
     const rapido = await tentarGroq(p, env);
     if (rapido) return resp({ texto: rapido.texto, modelo: rapido.modelo, ia: "groq", usado: c.usado, teto: c.teto, semContagem: c.semContagem }, 200, origem, env);
     if (!env.GEMINI_KEY) return resp({ erro: "sem_chave", mensagem: "O servidor so tem a chave rapida, que nao le foto nem video." }, 500, origem, env);
 
+    const nFotos = (Array.isArray(p.fotos) ? p.fotos : []).length, tent = [];
     const base = montarPedido(p);
     const lembrado = await modeloBom(env, "gemini");
     const parados = await descansos(env);
-    const candidatos = ordemPorDescanso([...new Set([p.modelo, lembrado, ...MODELOS].filter(Boolean))], parados).slice(0, 5);
+    const candidatos = ordemPorDescanso([...new Set([p.modelo, lembrado, ...MODELOS].filter(Boolean))], parados).slice(0, 7);
     let ultimo = { erro: "upstream" };
 
     for (const modelo of candidatos) {
@@ -260,27 +286,35 @@ export default {
         const cand = d.candidates && d.candidates[0];
         const texto = ((cand && cand.content && cand.content.parts) || []).filter(x => !x.thought).map(x => x.text || "").join("").trim();
         const fim = (cand && cand.finishReason) || "";
-        if (fim === "MAX_TOKENS") return resp({ erro: "cortado" }, 200, origem, env);
+        if (fim === "MAX_TOKENS") { await anota(env, { fotos: nFotos, ia: "gemini", modelo, ok: false, erro: "cortado", tent }); return resp({ erro: "cortado" }, 200, origem, env); }
         if (!texto) {
           const bloqueio = (d.promptFeedback && d.promptFeedback.blockReason) || /SAFETY|PROHIBITED|BLOCK/.test(fim);
+          await anota(env, { fotos: nFotos, ia: "gemini", modelo, ok: false, erro: bloqueio ? "recusado" : "vazio_ia", tent });
           return resp({ erro: bloqueio ? "recusado" : "vazio_ia" }, 200, origem, env);
         }
         if (modelo !== lembrado) await guardaModelo(env, "gemini", modelo);
+        if (tent.length) await anota(env, { fotos: nFotos, ia: "gemini", modelo, ok: true, tent });
         return resp({ texto, modelo, ia: "gemini", usado: c.usado, teto: c.teto, semContagem: c.semContagem }, 200, origem, env);
       }
 
       const err = await r.json().catch(() => ({}));
       const msg = (err.error && err.error.message) || "";
-      if (r.status === 401 || r.status === 403) return resp({ erro: "chave_servidor", mensagem: "A chave do servidor foi recusada pelo Google." }, 502, origem, env);
+      if (r.status === 401 || r.status === 403) {
+        await anota(env, { fotos: nFotos, ia: "gemini", ok: false, erro: "chave_servidor", tent: tent.concat([{ m: modelo, http: r.status, msg: msg.slice(0, 120) }]) });
+        return resp({ erro: "chave_servidor", mensagem: "A chave do servidor foi recusada pelo Google." }, 502, origem, env);
+      }
       if (r.status === 429) {
+        tent.push({ m: modelo, http: 429, msg: msg.slice(0, 120) });
         const dia = eDoDia(msg);
         await poeDeCastigo(env, parados, modelo, dia ? ateAmanha() : 90);
         ultimo = { erro: dia ? "limite_dia" : "limite_google", mensagem: msg.slice(0, 200) };
         continue;
       }
-      if (r.status === 404 || r.status >= 500 || /model|not supported|not found/i.test(msg)) { ultimo = { erro: "upstream" }; continue; }
+      if (r.status === 404 || r.status >= 500 || /model|not supported|not found/i.test(msg)) { tent.push({ m: modelo, http: r.status, msg: msg.slice(0, 120) }); ultimo = { erro: "upstream" }; continue; }
+      await anota(env, { fotos: nFotos, ia: "gemini", ok: false, erro: p.video ? "video" : "upstream", tent: tent.concat([{ m: modelo, http: r.status, msg: msg.slice(0, 120) }]) });
       return resp({ erro: p.video ? "video" : "upstream", mensagem: msg.slice(0, 200) }, 502, origem, env);
     }
+    await anota(env, { fotos: nFotos, ia: "gemini", ok: false, erro: ultimo.erro, tent });
     return resp(ultimo, 502, origem, env);
   },
 };
