@@ -125,6 +125,18 @@ A chave da IA nunca vai na cópia de segurança. Para usá-la em outro aparelho,
 
 Todos os aparelhos gastam da mesma cota gratuita, porque a cota é do projeto na Google, não do aparelho. Os dados ficam presos ao endereço do site: se o app mudar de endereço, é preciso exportar a cópia antes e restaurar no endereço novo. **[hoje]**
 
+
+### Atualizar o aparelho de cada filho **[hoje]**
+
+A cópia completa substitui tudo e serve para restaurar. Para o dia a dia existe outro caminho, por filho:
+
+- Em **Pais → Compartilhar**, um botão por criança: *“Benja · 4º ano · 3 provas — 📋 Copiar”*.
+- O código leva só aquela criança: provas, material lido e roteiro. **Progresso, notas e erros não viajam** — são de quem estuda naquele aparelho.
+- Na chegada é **fusão, nunca substituição**: soma o que falta e não encosta no que a criança já fez. Pode ser reenviado quantas vezes quiser, o que permite montar a semana aos poucos.
+- Em aparelho novo, a criança é criada sozinha com o nome que vem no código: sem cadastro manual, sem refazer configuração filho por filho.
+- Aparelho marcado como “de fulano” recusa o código de outro irmão, dizendo de quem é cada um.
+- Isto é o que torna o app viável para quem tem vários filhos: a mãe monta num aparelho só e distribui, em vez de repetir tudo por criança.
+- Continua sem sincronização automática: quem manda é a mãe, quando ela quiser. Turma no servidor segue na Fase 2.
 ## 5. Jornada da criança
 
 O app **oferece**, não manda. Todo o estudo de cada prova aparece de uma vez, em partes numeradas na ordem sugerida, e a criança escolhe qual fazer agora. Não há sessão presa a um dia: se ela quiser fazer três partes num sábado e nenhuma na segunda, tudo bem. A única exceção é a revisão da véspera, que continua ligada à data da prova, porque é ela que traz de volta o que a criança errou nos quizzes. **[hoje]**

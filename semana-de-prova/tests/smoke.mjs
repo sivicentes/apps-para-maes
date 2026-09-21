@@ -1405,5 +1405,142 @@ console.log("\n29. a senha dos pais tranca de verdade");
   }
 }
 
+/* ================= 30. atualizar o aparelho de cada filho ================= */
+console.log("\n30. atualizar o aparelho de cada filho, sem refazer nada");
+{
+  /* monta a casa da mãe: dois filhos, cada um com uma prova e material */
+  async function casaDaMae() {
+    const { w, t } = await boot([]);
+    t.ui.form = { name: "Benja", grade: "4º ano" }; t.A.savekid();
+    t.ui.form = { name: "Lila", grade: "5º ano" }; t.A.savekid();
+    const põe = (nome, materia, pagina) => {
+      const k = t.S.kids.find(x => x.name === nome);
+      t.S.active = k.id;
+      const e = { id: "x" + nome + materia, subject: materia, date: "2099-12-10", topics: "o que cai", pages: "4 a 6", links: [{ url: "https://exemplo.com/" + materia, label: "vídeo" }], content: "", blocks: [], material: null, nPages: 0, misses: [], asked: [] };
+      k.exams.push(e);
+      w.addBlocks(e, { sistema: "Objetivo", volume: "Apostila 2", edicao: "2026", serie: k.grade }, [{ materia, assunto: "assunto de " + materia, pagina, conceitos: ["a"], conteudo: "Conteúdo de " + materia + " para " + nome + "." }]);
+      k.sessions.push(w.mkSession(e, null, "estudo", materia + ": parte 1", 20, ["Leia a página " + pagina + ".", "Anote três coisas."], 1));
+      return e;
+    };
+    põe("Benja", "Inglês", "4");
+    põe("Lila", "Matemática", "12");
+    return { w, t };
+  }
+
+  // --- o código é de um filho só, e diz de quem é ---
+  {
+    const { w, t } = await casaDaMae();
+    const benja = t.S.kids.find(x => x.name === "Benja");
+    const bruto = JSON.parse(w.codigoTurma(true, benja));
+    eq(bruto.nome, "Benja", "o código diz de qual filho é");
+    eq(bruto.serie, "4º ano", "com a série dele");
+    eq(bruto.provas.length, 1, "e só as provas dele, não as da irmã");
+    eq(bruto.provas[0].m, "Inglês", "a prova certa");
+    ok(bruto.provas[0].b.length > 0, "com o material que a IA já leu");
+    ok(bruto.provas[0].r.length > 0, "e o roteiro pronto");
+    ok(!JSON.stringify(bruto).includes("Lila"), "nada da outra filha vai junto");
+
+    // o código da turma continua anônimo, como era
+    t.S.active = benja.id;
+    const turma = JSON.parse(w.codigoTurma(true));
+    ok(!turma.nome, "o código da turma continua sem nome de criança");
+  }
+
+  // --- tablet novo: cria a criança sozinho, sem perguntar nada ---
+  {
+    const { w, t } = await casaDaMae();
+    const benja = t.S.kids.find(x => x.name === "Benja");
+    const codigo = await w.zipar(w.codigoTurma(true, benja));
+
+    const tablet = await boot([]);
+    eq(tablet.t.S.kids.length, 0, "o tablet começa vazio");
+    tablet.w.eval('document.body.insertAdjacentHTML("beforeend", \'<textarea id="wio">' + codigo + "</textarea>')");
+    await tablet.t.A.wgo();
+    eq(tablet.t.S.kids.length, 1, "a criança é criada sozinha");
+    eq(tablet.t.S.kids[0].name, "Benja", "com o nome que veio no código");
+    eq(tablet.t.S.kids[0].grade, "4º ano", "e a série");
+    eq(tablet.t.S.kids[0].exams.length, 1, "a prova chegou");
+    eq(tablet.t.S.kids[0].sessions.length, 1, "o roteiro também");
+    ok(tablet.t.S.kids[0].exams[0].content.includes("Conteúdo de Inglês"), "e o material já lido");
+    eq(tablet.t.ui.screen, null, "sem parar para perguntar o nome");
+  }
+
+  // --- reenviar depois NÃO apaga o que a criança já fez ---
+  {
+    const { w, t } = await casaDaMae();
+    const benja = t.S.kids.find(x => x.name === "Benja");
+    const tablet = await boot([]);
+    tablet.w.eval('document.body.insertAdjacentHTML("beforeend", \'<textarea id="wio">' + (await w.zipar(w.codigoTurma(true, benja))) + "</textarea>')");
+    await tablet.t.A.wgo();
+
+    // o Benja estuda no tablet dele
+    const kt = tablet.t.S.kids[0];
+    kt.sessions[0].done = true;
+    kt.sessions[0].steps.forEach(s => { s.done = true; });
+    kt.sessions[0].score = { right: 4, total: 5, at: "2099-12-08" };
+    kt.exams[0].misses = [{ q: "errou essa", topic: "plural" }];
+
+    // a mãe acrescenta outra prova no computador e manda de novo
+    t.S.active = benja.id;
+    const e2 = { id: "novo", subject: "Ciências", date: "2099-12-12", topics: "cadeia alimentar", pages: "40 a 44", links: [], content: "", blocks: [], material: null, nPages: 0, misses: [], asked: [] };
+    benja.exams.push(e2);
+    w.addBlocks(e2, null, [{ materia: "Ciências", assunto: "produtores", pagina: "40", conceitos: [], conteudo: "Produtores fazem fotossíntese." }]);
+    benja.sessions.push(w.mkSession(e2, null, "estudo", "Ciências: parte 1", 20, ["Leia a página 40."], 1));
+
+    tablet.t.ui.form.atu = "paste";
+    tablet.w.eval('document.body.insertAdjacentHTML("beforeend", \'<textarea id="atuio">' + (await w.zipar(w.codigoTurma(true, benja))) + "</textarea>')");
+    await tablet.t.A.atudoimport();
+
+    const k2 = tablet.t.S.kids[0];
+    eq(tablet.t.S.kids.length, 1, "não duplicou a criança");
+    eq(k2.exams.length, 2, "a prova nova chegou");
+    ok(k2.exams.some(e => e.subject === "Ciências"), "Ciências entrou");
+    eq(k2.sessions.filter(s => s.title.includes("Ciências")).length, 1, "com o roteiro dela");
+    eq(k2.sessions[0].done, true, "e o que o Benja já tinha feito continua feito");
+    eq(k2.sessions[0].score.right, 4, "a nota do quiz dele não se perdeu");
+    eq(k2.exams[0].misses.length, 1, "nem os erros que ele cometeu");
+    eq(k2.sessions.filter(s => s.title.includes("Inglês")).length, 1, "e o roteiro antigo não foi duplicado");
+
+    // mandar mais uma vez, sem mudar nada, não faz estrago
+    tablet.w.eval('document.getElementById("atuio").remove()');
+    tablet.t.ui.form.atu = "paste";
+    tablet.w.eval('document.body.insertAdjacentHTML("beforeend", \'<textarea id="atuio">' + (await w.zipar(w.codigoTurma(true, benja))) + "</textarea>')");
+    await tablet.t.A.atudoimport();
+    eq(tablet.t.S.kids[0].exams.length, 2, "reenviar de novo não duplica provas");
+    eq(tablet.t.S.kids[0].sessions.length, 2, "nem partes do roteiro");
+    eq(tablet.t.S.kids[0].sessions[0].done, true, "e o progresso segue intacto");
+  }
+
+  // --- o tablet do Benja recusa o código da Lila ---
+  {
+    const { w, t } = await casaDaMae();
+    const lila = t.S.kids.find(x => x.name === "Lila");
+    const tablet = await boot([]);
+    const benja = t.S.kids.find(x => x.name === "Benja");
+    tablet.w.eval('document.body.insertAdjacentHTML("beforeend", \'<textarea id="wio">' + (await w.zipar(w.codigoTurma(true, benja))) + "</textarea>')");
+    await tablet.t.A.wgo();
+    // marca o tablet como sendo do Benja
+    tablet.w.eval('DEV = { modo: "crianca", kid: S.kids[0].id }; saveDev();');
+    ok(tablet.w.eval("soCrianca()"), "o tablet está no modo criança");
+
+    tablet.t.ui.form.atu = "paste";
+    tablet.w.eval('document.body.insertAdjacentHTML("beforeend", \'<textarea id="atuio">' + (await w.zipar(w.codigoTurma(true, lila))) + "</textarea>')");
+    await tablet.t.A.atudoimport();
+    eq(tablet.t.S.kids.length, 1, "o código da irmã não entra no tablet do Benja");
+    ok(!tablet.t.S.kids.some(x => x.name === "Lila"), "a Lila não aparece aqui");
+  }
+
+  // --- a tela mostra um botão por filho ---
+  {
+    const { w, t } = await casaDaMae();
+    t.ui.tab = "pais"; t.ui.unlocked = true; t.ui.screen = "pcompartilhar"; w.render();
+    const html = w.document.getElementById("app").innerHTML;
+    ok(html.includes("Atualizar o aparelho de cada filho"), "a tela oferece a atualização por filho");
+    ok(html.includes("Benja") && html.includes("Lila"), "com os dois filhos listados");
+    ok(html.includes("nada do que eles j"), "prometendo que nada do que já foi feito se perde");
+    ok((html.match(/data-a="atucopy"/g) || []).length === 2, "um botão de copiar para cada um");
+  }
+}
+
 console.log(`\n${passed} passaram, ${failed} falharam`);
 process.exit(failed ? 1 : 0);

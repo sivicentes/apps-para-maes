@@ -1449,10 +1449,16 @@ function subHead(titulo, sub) {
    condensado e o roteiro base. Nunca leva nome, progresso, notas nem erros da
    crianca - isso e da familia e fica no aparelho. Ao colar, SOMA ao que ja
    existe em vez de substituir: o progresso de quem recebe nao e tocado. */
-function codigoTurma(comMaterial) {
-  const k = kid();
+/* Um so formato para dois usos: sem `quem`, e o codigo da turma (anonimo);
+   com `quem`, e a atualizacao do aparelho daquele filho, e leva o nome para
+   o aparelho de destino achar (ou criar) a crianca certa sozinho. Nos dois
+   casos a chegada e uma FUSAO: nada de progresso, nota ou erro vai junto, e
+   nada do que ja esta no aparelho e apagado. */
+function codigoTurma(comMaterial, quem) {
+  const k = quem || kid();
   return JSON.stringify({
     turma: 1, serie: k.grade, em: today(),
+    ...(quem ? { nome: k.name, ritmo: paceOf(k) } : {}),
     provas: k.exams.map(e => ({
       m: e.subject, d: e.date, t: e.topics, p: e.pages,
       l: linksOf(e).map(x => ({ u: x.url, r: x.label })),
@@ -1463,8 +1469,25 @@ function codigoTurma(comMaterial) {
     })),
   });
 }
+/* Quando o codigo diz de qual filho e, o aparelho acha a crianca pelo nome
+   ou cria na hora, e passa a trabalhar nela. E o que evita refazer a
+   configuracao filho por filho, aparelho por aparelho. */
+function alvoDoCodigo(o) {
+  const nome = cutStr(o && o.nome, 20); if (!nome) return null;
+  if (soCrianca()) {
+    const dono = S.kids.find(x => x.id === DEV.kid);
+    if (dono && dono.name.toLowerCase() !== nome.toLowerCase()) throw { code: "outra_crianca", nome, dono: dono.name };
+  }
+  let k = S.kids.find(x => x.name.toLowerCase() === nome.toLowerCase());
+  const nova = !k;
+  if (!k) { k = { id: uid(), name: nome, grade: cutStr(o.serie, 20) || "5º ano", pace: PACE[o.ritmo] ? o.ritmo : "normal", exams: [], sessions: [], planAt: null }; S.kids.push(k); }
+  else if (PACE[o.ritmo] && !k.pace) k.pace = o.ritmo;
+  S.active = k.id;
+  return { kid: k, nova };
+}
 function importarTurma(o) {
   if (!o || o.turma !== 1 || !Array.isArray(o.provas)) throw new Error("formato");
+  const alvo = alvoDoCodigo(o);
   const k = kid(); let novas = 0, somadas = 0, comRot = 0, comMat = 0;
   for (const p of o.provas) {
     const mat = cutStr(p.m, 60); if (!mat) continue;
@@ -1506,7 +1529,7 @@ function importarTurma(o) {
     return da.localeCompare(db) || (a.ord || 0) - (b.ord || 0);
   });
   save();
-  return { novas, somadas, comRot, comMat };
+  return { novas, somadas, comRot, comMat, quem: alvo && alvo.kid.name, criada: !!(alvo && alvo.nova) };
 }
 function vTurmaCard() {
   const k = kid(), full = codigoTurma(true), leve = codigoTurma(false);
@@ -1567,9 +1590,32 @@ function vPIA() {
   h += '<p class="small muted">Trate a chave como senha: ela é sua e está ligada à sua conta na Google. Não publique nem mande para quem não for de casa.</p>';
   return h;
 }
+/* Atualizar o aparelho de cada filho, quantas vezes for preciso.
+   Diferente da cópia completa, este código FUNDE: soma provas, material e
+   roteiro que faltam e não encosta no que a criança já fez ali. É o que
+   permite montar a semana aos poucos sem refazer nada, e o que salva a mãe
+   de quatro filhos de repetir tudo quatro vezes. */
+function vCardAtualizar() {
+  const f = ui.form;
+  let h = '<div class="card"><h2>📲 Atualizar o aparelho de cada filho</h2>' +
+    '<p class="small muted">Manda <b>o que você montou</b> — provas, material lido e roteiro — para o celular ou o tablet de um filho. Pode mandar quantas vezes quiser, conforme for montando: <b>nada do que ' + (S.kids.length > 1 ? "eles já fizeram" : "ele já fez") + ' se perde</b>.</p>';
+  h += S.kids.map(x =>
+    '<div class="row between" style="padding:10px 0;border-bottom:1.5px dashed var(--line);gap:10px">' +
+    '<span class="grow"><b>' + esc(x.name) + "</b> <span class=\"small muted\">· " + esc(x.grade) + " · " + x.exams.length + " prova(s)</span></span>" +
+    '<button class="btn" data-a="atucopy" data-id="' + x.id + '">📋 Copiar</button>' +
+    (podeCompartilhar() ? '<button class="btn" data-a="atushare" data-id="' + x.id + '">📤 Enviar</button>' : "") +
+    "</div>").join("");
+  h += '<div class="acts"><button class="btn ghost" data-a="atupaste">Colar aqui o código que recebi</button></div>' +
+    (f.atu === "paste"
+      ? '<label for="atuio" style="margin-top:10px">Código que veio do outro aparelho</label><textarea id="atuio" placeholder="Cole aqui"></textarea><div class="acts"><button class="btn pri block" data-a="atudoimport">Atualizar este aparelho</button></div>'
+      : f.atu ? '<textarea id="atuio" readonly style="margin-top:10px;font-size:.78rem">' + esc(f.atu) + "</textarea>" : "");
+  h += '<p class="small muted">No aparelho do seu filho: abra o app, vá em <b>Pais › Compartilhar</b> e cole aqui. Se ele ainda não conhece a criança, ela é criada com o nome que vem no código.</p></div>';
+  return h;
+}
 function vPCompartilhar() {
   const k = kid(), f = ui.form;
   let h = subHead("Compartilhar");
+  h += vCardAtualizar();
   h += '<div class="card"><h2>👤 Para outro aparelho meu</h2><p class="small muted">Seu celular, seu computador, os tablets dos seus filhos. Leva <b>tudo</b>: provas, roteiro, material, e também o nome, o progresso e as notas de ' + esc(k.name) + '.</p>' +
     '<p class="small" style="color:var(--bad)"><b>Não mande isto para outra mãe</b> — são dados dos seus filhos.</p>' +
     '<div class="acts two"><button class="btn pri" data-a="iocopy">📋 Copiar</button>' + (podeCompartilhar() ? '<button class="btn" data-a="ioshare">📤 Enviar</button>' : '<button class="btn" data-a="export">Ver o código</button>') + "</div>" +
@@ -1714,6 +1760,25 @@ const A = {
   pcompartilhar() { ui.screen = "pcompartilhar"; ui.form = {}; window.scrollTo(0, 0); },
   ppais() { ui.screen = null; ui.form = {}; window.scrollTo(0, 0); },
   examdet(d) { ui.arg = d.id; ui.screen = "examdet"; window.scrollTo(0, 0); },
+  async atucopy(d) { const x = S.kids.find(y => y.id === d.id); if (!x) return; copiar(await zipar(codigoTurma(true, x)), "Código de " + x.name + " copiado! Cole no aparelho dele(a), em Pais › Compartilhar."); },
+  async atushare(d) { const x = S.kids.find(y => y.id === d.id); if (!x) return; compartilhar(await zipar(codigoTurma(true, x)), "Semana de Prova — " + x.name); },
+  atupaste() { ui.form.atu = ui.form.atu === "paste" ? null : "paste"; },
+  async atudoimport() {
+    const raw = ($("#atuio") ? $("#atuio").value : "").trim();
+    if (raw.length < 10) return toast("Cole o código primeiro.");
+    let r; try { r = await lerCodigo(raw); } catch (e) { return toast("Não consegui ler esse código. Confira se copiou inteiro."); }
+    if (r.tipo !== "turma") return toast("Esse é o código da cópia completa. Use “Colar um código meu aqui”, logo abaixo.");
+    let res; try { res = importarTurma(r.dados); }
+    catch (e) {
+      if (e && e.code === "outra_crianca") return toast("Este aparelho é de " + e.dono + ", e o código é de " + e.nome + ". Mande o código certo, ou mude em Pais › Este aparelho.");
+      return toast("Não consegui usar esse código.");
+    }
+    ui.form = {}; save();
+    toast((res.criada ? res.quem + " entrou neste aparelho. " : "") +
+      (res.novas ? res.novas + " prova(s) novas" : "Nada de prova nova") +
+      (res.comMat ? ", material novo em " + res.comMat : "") + (res.comRot ? ", roteiro de " + res.comRot : "") +
+      ". O que já estava feito continua aí.");
+  },
   async iocopy() { copiar(await zipar(estadoParaLevar()), "Código copiado! Mande para você mesma e cole no outro aparelho."); },
   async iolite() { copiar(await zipar(estadoLeve()), "Cópia leve copiada! No outro aparelho, reenvie as fotos das páginas."); },
   async ioshare() { compartilhar(await zipar(estadoParaLevar()), "Semana de Prova — cópia de segurança"); },
@@ -1737,14 +1802,17 @@ const A = {
     if (raw.length < 10) return toast("Cole o código primeiro.");
     let r; try { r = await lerCodigo(raw); } catch (e) { return toast("Não consegui ler esse código. Confira se copiou inteiro."); }
     if (r.tipo === "copia") { aplicaPinDoCodigo(r.dados); S = r.dados; S.settings = S.settings || { minutes: 45, weekends: true }; save(); ui.screen = null; ui.form = {}; ui.tab = "hoje"; render(); return toast("Tudo restaurado neste aparelho!"); }
-    if (!kid()) {
+    /* codigo que diz de qual filho e ja traz o nome: nao precisa perguntar */
+    if (!kid() && !(r.dados && r.dados.nome)) {
       if (!ui.form.pedeNome) { ui.form = { passo: "codigo", wio: raw, pedeNome: true, serieSugerida: r.dados.serie || "" }; render(); return; }
       const nome = ($("#kname") ? $("#kname").value : ui.form.name || "").trim(); if (!nome) return toast("Escreva o nome ou apelido da criança.");
       const serie = $("#kgrade") ? $("#kgrade").value : ui.form.grade, ritmo = $("#kpace") ? $("#kpace").value : ui.form.pace;
       const nk = { id: uid(), name: nome.slice(0, 20), grade: serie || r.dados.serie || "5º ano", pace: PACE[ritmo] ? ritmo : "normal", exams: [], sessions: [], planAt: null };
       S.kids.push(nk); S.active = nk.id; save();
     }
-    const res = importarTurma(r.dados); ui.screen = null; ui.form = {}; ui.tab = "hoje"; render();
+    let res; try { res = importarTurma(r.dados); }
+    catch (e) { return toast(e && e.code === "outra_crianca" ? "Este aparelho é de " + e.dono + ", e o código é de " + e.nome + "." : "Não consegui usar esse código."); }
+    ui.screen = null; ui.form = {}; ui.tab = "hoje"; render();
     toast(res.novas + " prova(s) chegaram" + (res.comRot ? " com o roteiro pronto" : "") + ". Bons estudos!");
   },
   async srvsave() {
