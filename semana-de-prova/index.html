@@ -820,7 +820,7 @@ async function readPages(examId, files) {
       busy("Lendo as p\u00e1ginas de " + ex.subject + "\u2026", "P\u00e1gina " + (i + 1) + (part.length > 1 ? " a " + (i + part.length) : "") + " de " + g.images.length);
       const r = await readChunk(ex, "", part); const a = addBlocks(ex, r.material, r.blocos); added += a.added; unreadable += a.unreadable; count += part.length;
     }
-    ui.files = []; ui.screen = null; save(); idle();   /* nPages vem dos blocos, em addBlocks */
+    ui.files = []; ui.filesDe = null; ui.screen = null; save(); idle();   /* nPages vem dos blocos, em addBlocks */
     const mat = matLabel(ex);
     toast(unreadable ? unreadable + " foto(s) ficaram ileg\u00edveis. Tire de novo, com luz e sem cortar a p\u00e1gina." : !added ? "Esse material j\u00e1 estava guardado." : count + " p\u00e1gina(s) lidas!" + (mat ? " Material: " + mat + "." : ""));
   } catch (e) { idle(); if (e.code !== "cancelled") toast(errMsg(e)); }
@@ -861,9 +861,22 @@ function paceRules(p) {
 }
 /* conjunto de paginas a partir do que a professora (ou a IA) escreveu:
    "120 a 153", "40-52", "12, 15 e 18", "120-121" (foto de duas paginas) */
+/* Nem todo numero no campo de paginas e pagina. "caderno 3", "Apostila 2",
+   "Leccion 5 e 6", "questao 7" sao referencias de material ou de exercicio, e
+   viravam pagina: o app passava a pedir foto de uma pagina que nao existe e a
+   avisar que faltava material. Aqui essas expressoes saem antes da conta. */
+const NUM_OU_FAIXA = "\\d{1,4}(?:\\s*(?:a|à|at[eé]|-|–|—)\\s*\\d{1,4})?";
+/* palavra antes do numero: "caderno 3", "Licao 5 e 6" */
+const NAOPAG_ANTES = new RegExp(
+  "\\b(cadernos?|livros?|apostilas?|volumes?|vol|unidades?|cap[ií]tulos?|cap|m[oó]dulos?|aulas?|li[çc][õoã]es|li[çc][ãa]o|leccion(?:es)?|lecci[oó]n|lessons?|bimestres?|trimestres?|semestres?|etapas?|s[eé]ries?|tomos?|partes?|atividades?|exerc[ií]cios?|quest[õo]es|quest[ãa]o|anexos?|blocos?|se[çc][õoã]es|se[çc][ãa]o)" +
+  "\\s*\\.?\\s*:?\\s*" + NUM_OU_FAIXA + "(?:\\s*(?:e|,|;|/)\\s*" + NUM_OU_FAIXA + ")*", "gi");
+/* numero antes da palavra: "4º ano", "2ª unidade" */
+const NAOPAG_DEPOIS = /\d{1,4}\s*[ºo°ª]?\s*(anos?|s[eé]ries?|bimestres?|trimestres?|semestres?|unidades?|cap[ií]tulos?|volumes?|cadernos?|li[çc][ãa]o|aulas?)\b/gi;
+const soPaginas = str => String(str || "").replace(NAOPAG_ANTES, " ").replace(NAOPAG_DEPOIS, " ");
+
 function pageSet(str) {
   const out = new Set();
-  String(str || "")
+  soPaginas(str)
     .replace(/(\d{1,4})\s*(?:a|à|até|-|–|—)\s*(\d{1,4})/gi, (m, a, b) => {
       const x = +a, y = +b; if (y >= x && y - x < 400) for (let i = x; i <= y; i++) out.add(i);
       return " ";
@@ -1654,13 +1667,42 @@ function vDiag() {
     '<p class="small muted">Os passos s\u00e3o escritos pela IA a partir das p\u00e1ginas indicadas acima. Se ela citou um intervalo menor que o do comunicado, foi ela que dividiu o conte\u00fado \u2014 confira se todas as p\u00e1ginas aparecem somando as sess\u00f5es.</p>' +
     (ss.length ? '<div class="btns"><button class="btn" data-a="planone" data-id="' + e.id + '">Refazer o roteiro desta prova</button></div>' : "") + "</div>";
   return h;
-}function vPages() {
+}
+/* O plano de fotos daquela prova, na tela onde ela fotografa: o que o
+   comunicado pede, o que já foi lido e o que ainda falta. Sem isto ela
+   precisa voltar à prova para lembrar quais páginas ainda faltam, e acaba
+   processando de pouco em pouco só para descobrir onde parou. */
+function planoPaginas(e) {
+  const quer = pageSet(e.pages);
+  if (!quer.size) return null;
+  seedBlocks(e);
+  const tem = new Set();
+  e.blocks.forEach(b => pageSet(b.pagina).forEach(n => { if (quer.has(n)) tem.add(n); }));
+  const falta = [...quer].filter(n => !tem.has(n)).sort((a, b) => a - b);
+  return { quer: [...quer].sort((a, b) => a - b), tem: [...tem].sort((a, b) => a - b), falta };
+}
+function vPlanoPaginas(e) {
+  const p = planoPaginas(e);
+  if (!p) return '<div class="note"><p class="small"><b>Sem páginas anotadas nesta prova.</b> Se o comunicado indicou páginas, escreva-as em <b>Editar a prova</b> e elas aparecem aqui como lista do que fotografar.</p></div>';
+  const lista = (nums, cls) => '<b class="' + cls + '">p. ' + esc(faixas(nums)) + "</b>";
+  let h = '<div class="card"><h2>📋 O que fotografar</h2>';
+  h += '<p class="small">O comunicado pede ' + lista(p.quer, "mk") + " · " + p.quer.length + " página(s).</p>";
+  if (p.tem.length) h += '<p class="small">✅ Já lidas: ' + lista(p.tem, "") + "</p>";
+  h += p.falta.length
+    ? '<p class="small" style="color:var(--bad)">📷 <b>Ainda faltam: ' + esc(faixas(p.falta)) + "</b> · " + p.falta.length + " página(s)</p>"
+    : '<p class="small" style="color:var(--ok)"><b>Todas as páginas já foram lidas.</b> Só envie mais se quiser trocar alguma que saiu ruim.</p>';
+  h += '<p class="small muted">A lista se atualiza sozinha conforme você lê as fotos: a página só sai daqui quando a IA consegue lê-la.</p></div>';
+  return h;
+}
+function vPages() {
   const e = examOf(ui.arg); if (!e) { ui.screen = null; return vProvas(); }
   return '<button class="link" data-a="back">\u2039 Voltar</button><h1>P\u00e1ginas de ' + esc(e.subject) + '</h1><p class="muted">A c\u00e2mera fica aberta: tire uma foto por p\u00e1gina, na ordem, sem sair. No fim, toque em <b>Pronto</b> e todas s\u00e3o lidas de uma vez.</p>' +
+    vPlanoPaginas(e) +
     '<div class="card">' + (ui.files.length ? "<h3>" + ui.files.length + ' p\u00e1gina(s) na fila</h3><div style="max-height:260px;overflow:auto">' + ui.files.map((f, i) => '<div class="row between" style="padding:6px 0;border-bottom:1.5px dashed var(--line)"><span class="grow small" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (i + 1) + ". " + (isPdf(f) ? "\ud83d\udcd5 " : isDocx(f) ? "\ud83d\udcd8 " : "\ud83d\uddbc\ufe0f ") + esc(f.name || "foto") + '</span><button class="link" data-a="rmfile" data-i="' + i + '">tirar</button></div>').join("") + "</div>" : '<p class="muted small">Nenhuma p\u00e1gina na fila ainda.</p>') +
     '<div class="btns"><button class="btn pri block" data-a="pagecam">\ud83d\udcf7 ' + (ui.files.length ? "Tirar mais fotos" : "Abrir a c\u00e2mera") + '</button><button class="btn block" data-a="pagefile">\ud83d\uddbc\ufe0f Escolher do aparelho</button></div>' +
     (ui.files.length ? '<div class="btns"><button class="btn pri block" data-a="pagesgo">Ler as ' + ui.files.length + ' p\u00e1gina(s)</button></div>' : "") + "</div>" +
-    '<p class="small muted">As fotos s\u00e3o lidas pelo Gemini e n\u00e3o ficam guardadas: o app salva s\u00f3 o texto, neste aparelho. Se puder, corte da foto o nome completo da crian\u00e7a.</p>';
+    '<p class="small muted">A fila fica guardada enquanto o app estiver aberto: dá para fotografar em rodadas, conferir a lista acima e voltar. <b>Se fechar o app, a fila se perde</b> — as fotos só viram algo guardado depois de lidas.</p>' +
+    '<p class="small muted">As fotos são lidas pelo Gemini e não ficam guardadas: o app salva só o texto, neste aparelho. Se puder, corte da foto o nome completo da criança.</p>';
 }function render() {
   aplicaModo();
   const k = kid(); let h;
@@ -1707,7 +1749,7 @@ const A = {
     { label: "Primeiro salvar uma c\u00f3pia", pri: true, fn: () => { ui.form.io = "export"; toast("Copie o c\u00f3digo e guarde. Depois remova com seguran\u00e7a."); } },
     { label: "Remover mesmo assim", fn: () => { S.kids = S.kids.filter(k => k.id !== d.id); if (S.active === d.id) S.active = (S.kids[0] || {}).id || null; save(); toast(x.name + " removido(a)."); } },
   ], "Vai perder tudo de " + x.name + ": " + x.exams.length + " prova(s), " + x.sessions.length + " parte(s) e " + nq + " quiz(es), com o hist\u00f3rico de acertos e erros. N\u00e3o tem como desfazer."); },
-    notice() { ui.form = {}; ui.files = []; ui.screen = "notice"; },
+    notice() { ui.form = {}; ui.files = []; ui.filesDe = "comunicado"; ui.screen = "notice"; },
   async noticefile() { const files = await pickFiles(); keepForm(); for (const f of files) if (ui.files.length < 12) ui.files.push(f); render(); },
   async noticecam() { keepForm(); const files = await abrirCamera(12); for (const f of files) if (ui.files.length < 12) ui.files.push(f); render(); },
   rmfile(d) { ui.files.splice(+d.i, 1); },
@@ -1717,7 +1759,10 @@ const A = {
   saveexam() { const f = ui.form, k = kid(); if (!(f.subject || "").trim()) return toast("Escreva a matéria."); if (!validD(f.date)) return toast("Escolha o dia da prova."); let e = f.id && examOf(f.id); if (!e) { e = { id: uid(), content: "", blocks: [], material: null, nPages: 0, misses: [], asked: [] }; k.exams.push(e); } const moved = e.date && e.date !== f.date; Object.assign(e, { subject: f.subject.trim().slice(0, 60), date: f.date, topics: (f.topics || "").trim(), pages: (f.pages || "").trim(), links: parseLinks(f.links) }); const ms = (f.msis || "").trim(), mv = (f.mvol || "").trim(), me = (f.medi || "").trim(); e.material = (ms || mv || me) ? { sistema: ms.slice(0, 60), volume: mv.slice(0, 60), edicao: me.slice(0, 60), serie: (e.material && e.material.serie) || kid().grade } : null; k.exams.sort((a, b) => (a.date || "9").localeCompare(b.date || "9")); save(); ui.screen = null; ui.form = {}; if (moved && k.sessions.length) toast("Data mudou: monte o roteiro de novo."); },
   delexam() { const k = kid(), id = ui.form.id; confirmBox("Apagar esta prova e as sessões dela?", () => { k.exams = k.exams.filter(e => e.id !== id); k.sessions = k.sessions.filter(s => s.examId !== id); save(); ui.screen = null; ui.form = {}; }, "Apagar"); },
   clearpages() { const e = examOf(ui.form.id); if (!e) return; confirmBox("Apagar o conte\u00fado lido das p\u00e1ginas desta prova?", () => { e.content = ""; e.blocks = []; e.material = null; e.nPages = 0; ui.form.nPages = 0; save(); }, "Apagar"); },
-  pages(d) { ui.form = {}; ui.files = []; ui.arg = d.id; ui.screen = "pages"; window.scrollTo(0, 0); },
+  /* a fila de fotos daquela prova sobrevive a sair e voltar da tela: ela
+     fotografa em rodadas, conferindo a lista do que falta entre uma e outra.
+     Só é zerada ao trocar de prova ou ao ir para o comunicado. */
+  pages(d) { if (ui.filesDe !== d.id) { ui.files = []; ui.filesDe = d.id; } ui.form = {}; ui.arg = d.id; ui.screen = "pages"; window.scrollTo(0, 0); },
   async pagecam() { const files = await abrirCamera(24); for (const f of files) if (ui.files.length < 24) ui.files.push(f); render(); if (files.length) toast(files.length === 1 ? "1 página na fila." : files.length + " páginas na fila."); },
   async pagefile() { const files = await pickFiles(false); for (const f of files) if (ui.files.length < 24) ui.files.push(f); render(); },
   pagesgo() { if (!ui.files.length) return toast("Tire ou escolha ao menos uma p\u00e1gina."); readPages(ui.arg, ui.files.slice()); },

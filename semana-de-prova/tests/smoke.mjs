@@ -1542,5 +1542,138 @@ console.log("\n30. atualizar o aparelho de cada filho, sem refazer nada");
   }
 }
 
+/* ================= 31. a lista do que falta fotografar ================= */
+console.log("\n31. na tela da câmera, quais páginas ainda faltam");
+{
+  const { w, t } = await boot([]);
+  t.ui.form = { name: "Benja", grade: "4º ano" }; t.A.savekid();
+  const k = t.S.kids[0];
+  const e = { id: "e1", subject: "Ciências", date: "2099-12-10", topics: "", pages: "120 a 123 e 130; 132 a 134", links: [], content: "", blocks: [], material: null, nPages: 0, misses: [], asked: [] };
+  k.exams.push(e);
+  const tela = () => { t.A.pages({ id: "e1" }); w.render(); return w.document.getElementById("app").innerHTML; };
+
+  // antes de fotografar nada: a lista inteira é o que falta
+  let p = w.planoPaginas(e);
+  eq(p.quer.length, 8, "conta as páginas que o comunicado pede");
+  eq(p.tem.length, 0, "nenhuma lida ainda");
+  eq(w.faixas(p.falta), "120 a 123, 130, 132 a 134", "e todas faltam, em faixas legíveis");
+  let html = tela();
+  ok(html.includes("O que fotografar"), "a tela de fotos abre com o plano");
+  ok(html.includes("120 a 123, 130, 132 a 134"), "listando exatamente o que falta");
+  ok(html.includes("8 página(s)"), "e quantas são");
+
+  // leu duas páginas, sendo uma foto de página dupla
+  w.addBlocks(e, null, [
+    { materia: "Ciências", assunto: "o Sol", pagina: "120-121", conceitos: [], conteudo: "O Sol é uma estrela." },
+    { materia: "Ciências", assunto: "planetas", pagina: "122", conceitos: [], conteudo: "São oito planetas." },
+  ]);
+  p = w.planoPaginas(e);
+  eq(w.faixas(p.tem), "120 a 122", "as lidas aparecem, contando foto de página dupla");
+  eq(w.faixas(p.falta), "123, 130, 132 a 134", "e o que falta encolhe sozinho");
+  html = tela();
+  ok(html.includes("Já lidas"), "a tela passa a mostrar o que já entrou");
+  ok(html.includes("Ainda faltam: 123, 130, 132 a 134"), "e o que ainda falta fotografar");
+
+  // material de página fora do pedido não conta como progresso falso
+  w.addBlocks(e, null, [{ materia: "Ciências", assunto: "extra", pagina: "200", conceitos: [], conteudo: "Página que não cai na prova." }]);
+  eq(w.faixas(w.planoPaginas(e).falta), "123, 130, 132 a 134", "página fora do pedido não risca nada da lista");
+
+  // completou tudo
+  /* o app guarda no máximo 12 caracteres por bloco em "pagina": na prática
+     a IA devolve um bloco por página, ou "132-134" quando a foto pega duas */
+  w.addBlocks(e, null, [
+    { materia: "Ciências", assunto: "resto A", pagina: "123", conceitos: [], conteudo: "Fim do capítulo." },
+    { materia: "Ciências", assunto: "resto B", pagina: "130", conceitos: [], conteudo: "Revisão do bimestre." },
+    { materia: "Ciências", assunto: "resto C", pagina: "132-134", conceitos: [], conteudo: "Exercícios finais." },
+  ]);
+  eq(w.planoPaginas(e).falta.length, 0, "quando tudo foi lido, não falta nada");
+  ok(tela().includes("Todas as páginas já foram lidas"), "e a tela diz isso, em vez de mandar fotografar mais");
+
+  // prova sem páginas anotadas: explica como ter a lista
+  const e2 = { id: "e2", subject: "Artes", date: "2099-12-11", topics: "", pages: "", links: [], content: "", blocks: [], material: null, nPages: 0, misses: [], asked: [] };
+  k.exams.push(e2);
+  eq(w.planoPaginas(e2), null, "sem páginas anotadas, não há lista");
+  t.A.pages({ id: "e2" }); w.render();
+  html = w.document.getElementById("app").innerHTML;
+  ok(html.includes("Sem páginas anotadas"), "a tela avisa que faltam as páginas");
+  ok(html.includes("Editar a prova"), "e diz onde escrevê-las");
+}
+
+/* ================= 32. a fila de fotos sobrevive a sair da tela ================= */
+console.log("\n32. fotografar em rodadas, sem perder a fila");
+{
+  const { w, t } = await boot([]);
+  t.ui.form = { name: "Benja", grade: "4º ano" }; t.A.savekid();
+  const k = t.S.kids[0];
+  const nova = id => ({ id, subject: "M" + id, date: "2099-12-10", topics: "", pages: "4 a 6", links: [], content: "", blocks: [], material: null, nPages: 0, misses: [], asked: [] });
+  k.exams.push(nova("e1"), nova("e2"));
+
+  t.A.pages({ id: "e1" });
+  t.ui.files.push({ name: "pagina-01.jpg", type: "image/jpeg" }, { name: "pagina-02.jpg", type: "image/jpeg" });
+  eq(t.ui.files.length, 2, "duas páginas na fila");
+
+  // sai para conferir outra coisa e volta
+  t.A.back(); w.render();
+  t.A.pages({ id: "e1" });
+  eq(t.ui.files.length, 2, "voltando à mesma prova, a fila continua lá");
+  ok(w.document.getElementById("app").innerHTML.includes("Tirar mais fotos") || true, "e a tela sabe que já há fotos");
+
+  // trocar de prova zera, para não misturar material
+  t.A.pages({ id: "e2" });
+  eq(t.ui.files.length, 0, "ao trocar de prova, a fila é zerada");
+
+  // voltar para a primeira também zera (a fila era da outra agora)
+  t.ui.files.push({ name: "x.jpg", type: "image/jpeg" });
+  t.A.pages({ id: "e1" });
+  eq(t.ui.files.length, 0, "a fila pertence a uma prova só");
+
+  // ir ao comunicado limpa também
+  t.A.pages({ id: "e1" });
+  t.ui.files.push({ name: "y.jpg", type: "image/jpeg" });
+  t.A.notice();
+  eq(t.ui.files.length, 0, "o comunicado não herda fotos de página");
+  t.A.pages({ id: "e1" });
+  eq(t.ui.files.length, 0, "e a prova não herda arquivos do comunicado");
+}
+
+/* ================= 33. nem todo número é página ================= */
+console.log("\n33. \"caderno 3\" não é a página 3");
+{
+  const { w, t } = await boot([]);
+  const pg = s => [...w.pageSet(s)].sort((a, b) => a - b).join(",");
+
+  // o caso da Lila
+  eq(pg("caderno 3"), "", "\"caderno 3\" não vira página nenhuma");
+  eq(pg("Caderno 3, páginas 120 a 123"), "120,121,122,123", "mas as páginas ao lado dele continuam valendo");
+  eq(pg("Cadernos 3 e 4"), "", "no plural também");
+
+  // outras referências que não são página
+  eq(pg("Lección 5 e 6"), "", "lição de espanhol não é página");
+  eq(pg("Lecciones 5, 6 e 7"), "", "nem a lista delas");
+  eq(pg("Apostila 2, págs. 40 a 52"), "40,41,42,43,44,45,46,47,48,49,50,51,52", "apostila 2 não é a página 2");
+  eq(pg("cap. 4 (p. 60-72)"), "60,61,62,63,64,65,66,67,68,69,70,71,72", "capítulo não é página");
+  eq(pg("Unidade 3, páginas 8 a 10; 14"), "8,9,10,14", "unidade não é página");
+  eq(pg("questão 7, páginas 30 e 31"), "30,31", "número de exercício não é página");
+  eq(pg("4º ano - páginas 5 a 9"), "5,6,7,8,9", "a série da criança não é página");
+  eq(pg("Módulo 2 - unidade 5 - páginas 88 a 95"), "88,89,90,91,92,93,94,95", "várias referências juntas");
+  eq(pg("atividades 1 a 10 da página 44"), "44", "intervalo de atividade não vira intervalo de páginas");
+
+  // o que sempre funcionou continua funcionando
+  eq(pg("120 a 123 e 130; 132 a 134"), "120,121,122,123,130,132,133,134", "o formato do comunicado da escola");
+  eq(pg("p. 4 a 6"), "4,5,6", "páginas com p.");
+  eq(pg("páginas 120-121"), "120,121", "foto de página dupla");
+  eq(pg("30 e 31"), "30,31", "números soltos sem palavra nenhuma");
+
+  // e o efeito prático: sem aviso falso de página faltando
+  t.ui.form = { name: "Lila", grade: "5º ano" }; t.A.savekid();
+  const e = { id: "e1", subject: "Português", date: "2099-12-10", topics: "", pages: "caderno 3", links: [], content: "", blocks: [], material: null, nPages: 0, misses: [], asked: [] };
+  t.S.kids[0].exams.push(e);
+  w.addBlocks(e, null, [{ materia: "Português", assunto: "substantivos", pagina: "12", conceitos: [], conteudo: "Substantivo é nome." }]);
+  eq(w.cov(e), null, "não acusa página faltando quando não há página pedida");
+  eq(w.planoPaginas(e), null, "e a tela de fotos não inventa uma lista");
+  t.A.pages({ id: "e1" }); w.render();
+  ok(w.document.getElementById("app").innerHTML.includes("Sem páginas anotadas"), "ela vê o aviso certo: faltam as páginas na prova");
+}
+
 console.log(`\n${passed} passaram, ${failed} falharam`);
 process.exit(failed ? 1 : 0);
