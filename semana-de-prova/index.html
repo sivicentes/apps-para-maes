@@ -996,7 +996,7 @@ function fitCheck(ex, t, p) {
 }
 function startPlan(onlyId) {
   const k = kid(), t = today(); onlyId = typeof onlyId === "string" ? onlyId : null;
-  const exams = k.exams.filter(e => validD(e.date) && e.date > t && (!onlyId || e.id === onlyId));
+  const exams = k.exams.filter(e => validD(e.date) && e.date >= t   /* a prova de hoje entra: dá para estudar de manhã */ && (!onlyId || e.id === onlyId));
   if (!exams.length) return makePlan(onlyId);
   const p = paceOf();
   const apertado = exams.map(e => fitCheck(e, t, p)).filter(Boolean);
@@ -1013,6 +1013,9 @@ function startPlan(onlyId) {
   return makePlan(onlyId);
 }
 function studyDays(fromS, toS) { const out = []; for (let d = fromS; d <= toS; d = addDays(d, 1)) { const w = parseD(d).getDay(); if (S.settings.weekends || (w !== 0 && w !== 6)) out.push(d); } return out; }
+/* Vespera da prova, sem cair no passado: se a prova e hoje (ela faz de manha
+   e a prova e a tarde), a revisao e hoje mesmo. */
+function vespera(ex) { const d = addDays(ex.date, -1), h = today(); return d < h ? h : d; }
 function mkSession(ex, date, type, title, minutes, steps, ord) {
   return { id: uid(), examId: ex.id, date: date || null, ord: ord || 0, type, title: String(title).slice(0, 90), minutes: Math.max(10, Math.min(60, Number(minutes) || 25)), steps: steps.slice(0, 6).map(t => ({ t: String(t).slice(0, 220), done: false })), done: false, explain: "", score: null };
 }
@@ -1024,7 +1027,7 @@ function basicSessions(ex, pace) {
   const lk = linksOf(ex).length ? [(hasVideo(ex) ? "Assista ao v\u00eddeo" : "Acesse o link") + " que a professora indicou (bot\u00e3o no alto da tela)."] : [];
   const out = [];
   for (let i = 0; i < partes; i++) out.push(mkSession(ex, null, "estudo", ex.subject + ": parte " + (i + 1) + " de " + partes, P.min, (i === 0 ? lk : []).concat(["Leia com calma o material" + where + ".", "Escreva no caderno 3 coisas importantes que voc\u00ea leu.", "Explique em voz alta para algu\u00e9m o que entendeu."]), i + 1));
-  out.push(mkSession(ex, addDays(ex.date, -1), "revisao", ex.subject + ": revis\u00e3o para a prova", P.min, ["Releia suas anota\u00e7\u00f5es e os t\u00edtulos do material" + where + ".", "Refa\u00e7a um exerc\u00edcio que voc\u00ea achou dif\u00edcil.", "Fa\u00e7a o quiz de revis\u00e3o."], partes + 1));
+  out.push(mkSession(ex, vespera(ex), "revisao", ex.subject + ": revis\u00e3o para a prova", P.min, ["Releia suas anota\u00e7\u00f5es e os t\u00edtulos do material" + where + ".", "Refa\u00e7a um exerc\u00edcio que voc\u00ea achou dif\u00edcil.", "Fa\u00e7a o quiz de revis\u00e3o."], partes + 1));
   return out;
 }
 /* O que a IA precisa saber sobre o material desta prova. Antes ia só um
@@ -1062,7 +1065,7 @@ function planPrompt(exams, t, pace, opts) {
     "Divida o estudo de cada prova em PARTES numeradas, em ordem de estudo. N\u00c3O distribua as partes por dia e N\u00c3O cite datas: a crian\u00e7a escolhe quando fazer cada parte.\n" +
     paceRules(pace) + "\n" +
     (opts && opts.priorizar ? "ATEN\u00c7\u00c3O: h\u00e1 mais conte\u00fado do que tempo at\u00e9 a prova. Ordene come\u00e7ando pelo que tem mais chance de cair, e escreva \"(extra)\" no fim do t\u00edtulo das partes menos essenciais.\n" : "") + "\nPROVAS:\n" +
-    exams.map(e => "- id " + e.id + " | " + e.subject + " | prova em " + e.date + " | cai: " + (e.topics || "n\u00e3o informado") + " | material indicado: " + (e.pages || "n\u00e3o informado") + (linksOf(e).length ? " | a professora indicou " + linksOf(e).length + " link(s): " + linksOf(e).map(l => (isVideo(l.url) ? "v\u00eddeo" : "site") + (l.label ? " (" + l.label + ")" : "")).join(", ") : "") + materialParaPlano(e)).join("\n") +
+    exams.map(e => "- id " + e.id + " | " + e.subject + " | prova em " + e.date + (e.date === t ? " (A PROVA E HOJE: sobra so esta manha. Monte de 2 a 4 partes curtas, comecando pelo essencial, e deixe claro que da para fazer tudo hoje)" : "") + " | cai: " + (e.topics || "n\u00e3o informado") + " | material indicado: " + (e.pages || "n\u00e3o informado") + (linksOf(e).length ? " | a professora indicou " + linksOf(e).length + " link(s): " + linksOf(e).map(l => (isVideo(l.url) ? "v\u00eddeo" : "site") + (l.label ? " (" + l.label + ")" : "")).join(", ") : "") + materialParaPlano(e)).join("\n") +
     "\n\nREGRAS:\n" +
     "1. Cada prova vira de 2 a 8 partes, cobrindo TODO o material guardado, sem deixar assunto de fora e sem repetir conte\u00fado entre partes.\n" +
     "1b. Baseie as partes nos ASSUNTOS REAIS DO MATERIAL GUARDADO. O campo \"cai\" serve s\u00f3 para priorizar. Se os dois n\u00e3o baterem, siga o material: \u00e9 ele que a crian\u00e7a tem em m\u00e3os. NUNCA escreva uma parte sobre assunto que n\u00e3o esteja no material guardado.\n" +
@@ -1076,8 +1079,8 @@ function planPrompt(exams, t, pace, opts) {
 }
 async function makePlan(onlyId, opts) {
   const k = kid(), t = today(); onlyId = typeof onlyId === "string" ? onlyId : null; opts = opts || {};
-  const exams = k.exams.filter(e => validD(e.date) && e.date > t && (!onlyId || e.id === onlyId));
-  if (!exams.length) return toast(onlyId ? "Essa prova precisa de uma data a partir de amanh\u00e3 para entrar no roteiro." : k.exams.length ? "Nenhuma prova com data a partir de amanh\u00e3. Confira as datas." : "Adicione as provas primeiro.");
+  const exams = k.exams.filter(e => validD(e.date) && e.date >= t   /* a prova de hoje entra: dá para estudar de manhã */ && (!onlyId || e.id === onlyId));
+  if (!exams.length) return toast(onlyId ? "Essa prova precisa de uma data de hoje em diante para entrar no roteiro." : k.exams.length ? "Nenhuma prova de hoje em diante. Confira as datas." : "Adicione as provas primeiro.");
   const kept = k.sessions.filter(s => s.done || (onlyId && s.examId !== onlyId));
   const pace = PACE[opts.pace] ? opts.pace : paceOf();
   let sessions = [], usedAI = false;
@@ -1094,7 +1097,7 @@ async function makePlan(onlyId, opts) {
       }
       for (const id of Object.keys(por)) {
         const lista = por[id].sort((a, b) => a.ordem - b.ordem);
-        lista.forEach((x, i) => sessions.push(mkSession(x.ex, x.tipo === "revisao" ? addDays(x.ex.date, -1) : null, x.tipo, x.titulo, x.minutos, x.steps, i + 1)));
+        lista.forEach((x, i) => sessions.push(mkSession(x.ex, x.tipo === "revisao" ? vespera(x.ex) : null, x.tipo, x.titulo, x.minutos, x.steps, i + 1)));
       }
       usedAI = sessions.length > 0;
     } catch (e) { if (e.code === "cancelled") return idle(); toast(errMsg(e) + " Montei um roteiro simples no lugar."); }
@@ -1645,7 +1648,7 @@ function importarTurma(o) {
     if (!jaTem && partes.length) {
       partes.sort((a, b) => (a.o || 0) - (b.o || 0)).forEach((x, i) => {
         const rev = x.tp === "revisao";
-        k.sessions.push(mkSession(e, rev && validD(e.date) ? addDays(e.date, -1) : null, rev ? "revisao" : "estudo", cutStr(x.ti, 90) || mat, x.mi, x.ps.map(y => cutStr(y, 220)), i + 1));
+        k.sessions.push(mkSession(e, rev && validD(e.date) ? vespera(e) : null, rev ? "revisao" : "estudo", cutStr(x.ti, 90) || mat, x.mi, x.ps.map(y => cutStr(y, 220)), i + 1));
       });
       comRot++;
     }

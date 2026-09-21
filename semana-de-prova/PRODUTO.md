@@ -159,6 +159,8 @@ O app **oferece**, não manda. Todo o estudo de cada prova aparece de uma vez, e
 
 ## 6. Regras do roteiro
 
+- **A prova de hoje entra no roteiro.** As crianças estudam de manhã e vão à escola à tarde, então exigir data futura deixava a mãe sem saída justo no dia que mais importa. Nesse caso a IA é avisada de que sobra só a manhã e monta de 2 a 4 partes curtas, e a revisão fica marcada para hoje, nunca para ontem. Prova que já passou continua fora.
+
 - O roteiro é montado a partir dos **assuntos realmente guardados** do material, não só do que o comunicado disse que cai. A IA recebe a lista dos trechos com suas páginas; quando o comunicado e o material não batem, ela segue o material, que é o que a criança tem em mãos, e não pode escrever parte sobre assunto que não esteja ali.
 - O roteiro é uma **foto do material no momento em que foi montado**. Material que chega depois não entra nele sozinho, então a prova passa a mostrar *“roteiro desatualizado”*, dizendo quantos trechos chegaram desde então, com o botão de refazer. Refazer é decisão da mãe: pode custar cota, e o progresso das partes já feitas é preservado.
 

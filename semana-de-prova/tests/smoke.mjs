@@ -1988,5 +1988,65 @@ console.log("\n39. todo erro diz o que foi");
   ok(vazio.includes("Cannot read properties of null"), "com a pista técnica");
 }
 
+/* ================= 40. a prova é hoje à tarde ================= */
+console.log("\n40. prova hoje à tarde, estudo hoje de manhã");
+{
+  const hoje = new Date();
+  const iso = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  const HOJE = iso(hoje);
+  const ONTEM = iso(new Date(hoje.getTime() - 864e5));
+  const AMANHA = iso(new Date(hoje.getTime() + 864e5));
+
+  async function comProva(data) {
+    const { w, t } = await boot([]);
+    t.ui.form = { name: "Lila", grade: "5º ano" }; t.A.savekid();
+    const k = t.S.kids[0];
+    const e = { id: "e1", subject: "Matemática", date: data, topics: "combinações", pages: "p. 4 a 6", links: [], content: "", blocks: [], material: null, nPages: 0, misses: [], asked: [] };
+    k.exams.push(e);
+    w.addBlocks(e, null, [{ materia: "Matemática", assunto: "combinações", pagina: "4", conceitos: [], conteudo: "Combinação é contar jeitos de juntar." }]);
+    return { w, t, e, k, aviso: () => w.document.getElementById("toast").textContent };
+  }
+
+  // --- prova hoje: entra no roteiro ---
+  {
+    const c = await comProva(HOJE);
+    c.w.basicSessions(c.e, "normal").forEach(s => c.k.sessions.push(s));
+    ok(c.k.sessions.length > 0, "a prova de hoje gera roteiro simples");
+    const rev = c.k.sessions.find(s => s.type === "revisao");
+    ok(rev, "com uma parte de revisão");
+    eq(rev.date, HOJE, "marcada para hoje, não para ontem");
+    ok(rev.date >= HOJE, "nunca no passado");
+  }
+
+  // --- o prompt avisa a IA que o tempo é só esta manhã ---
+  {
+    const c = await comProva(HOJE);
+    const pr = c.w.planPrompt([c.e], HOJE, "normal", {});
+    ok(pr.includes("A PROVA E HOJE"), "a IA é avisada de que é hoje");
+    ok(pr.includes("2 a 4 partes curtas"), "pedindo poucas partes e curtas");
+
+    const c2 = await comProva(AMANHA);
+    ok(!c2.w.planPrompt([c2.e], HOJE, "normal", {}).includes("A PROVA E HOJE"), "prova de amanhã não recebe esse aviso");
+  }
+
+  // --- prova de ontem continua fora: não adianta montar roteiro ---
+  {
+    const c = await comProva(ONTEM);
+    c.w.document.getElementById("toast").textContent = "";
+    await c.w.makePlan("e1");
+    ok(c.aviso().includes("de hoje em diante"), "prova que já passou avisa, com a regra certa");
+    ok(!c.aviso().includes("amanhã"), "sem falar em amanhã, que confundia");
+    eq(c.k.sessions.length, 0, "e não monta roteiro para prova passada");
+  }
+
+  // --- véspera de prova futura continua sendo a véspera ---
+  {
+    const c = await comProva(AMANHA);
+    c.w.basicSessions(c.e, "normal").forEach(s => c.k.sessions.push(s));
+    const rev = c.k.sessions.find(s => s.type === "revisao");
+    eq(rev.date, HOJE, "prova de amanhã revisa hoje, como sempre");
+  }
+}
+
 console.log(`\n${passed} passaram, ${failed} falharam`);
 process.exit(failed ? 1 : 0);
