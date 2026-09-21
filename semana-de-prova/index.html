@@ -171,6 +171,10 @@ textarea{min-height:88px;resize:vertical}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--paper);border-radius:12px;padding:10px 16px;font-weight:700;z-index:30;max-width:90%}
 /* camera em lote: fica fora do #app, entao o render() nao a destroi */
 .cam{position:fixed;inset:0;z-index:60;background:#000;display:flex;flex-direction:column}
+/* o display:flex acima vence o display:none que o atributo hidden aplica pelo
+   navegador, entao a tela precisa ser escondida explicitamente. Sem esta linha
+   a camera cobre o app inteiro desde que ele abre. */
+.cam[hidden]{display:none}
 .cam video{flex:1;width:100%;min-height:0;object-fit:contain;background:#000}
 .cam .topo{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:calc(10px + env(safe-area-inset-top,0px)) 14px 10px;color:#fff;font-family:var(--display);font-weight:700}
 .cam .topo .qtd{background:var(--mark);color:var(--ink);border-radius:999px;padding:3px 12px;font-size:.9rem}
@@ -598,6 +602,20 @@ function camArquivo(blob, n) {
   try { return new File([blob], nome, { type: "image/jpeg" }); } catch (e) { blob.name = nome; return blob; }
 }
 
+/* Espera a camera comecar a mandar imagem de verdade. Permissao dada nao
+   garante quadro: camera ocupada por outro programa, driver travado ou aba em
+   segundo plano deixam o video preto para sempre. */
+function camTemImagem(video, ms = 6000) {
+  return new Promise(res => {
+    const t0 = Date.now();
+    (function olha() {
+      if (video.videoWidth > 0 && video.videoHeight > 0) return res(true);
+      if (Date.now() - t0 > ms) return res(false);
+      setTimeout(olha, 120);
+    })();
+  });
+}
+
 async function abrirCamera(limite) {
   if (!temCameraViva()) { const fs = await pickFiles(true); return fs.slice(0, Math.max(0, limite - ui.files.length)); }
   let stream;
@@ -610,9 +628,16 @@ async function abrirCamera(limite) {
   camStream = stream;
   const tela = $("#camera"), video = $("#camvid"), tiras = $("#camtiras"), qtd = $("#camqtd"),
     disp = $("#camtira"), flash = $("#camflash"), jaTinha = ui.files.length;
+  tela.hidden = false;               // precisa estar na tela antes de tocar
   video.srcObject = stream;
   try { await video.play(); } catch (e) {}
-  tela.hidden = false;
+  /* imagem que nao vem deixaria a pessoa presa numa tela preta: melhor cair
+     na camera do aparelho, que sempre funciona */
+  if (!(await camTemImagem(video))) {
+    camFecha();
+    toast("A câmera abriu, mas a imagem não veio. Vou usar a do aparelho.");
+    const fs = await pickFiles(true); return fs.slice(0, Math.max(0, limite - ui.files.length));
+  }
 
   const novas = [];
   const pinta = () => {

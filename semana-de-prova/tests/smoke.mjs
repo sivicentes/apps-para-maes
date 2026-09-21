@@ -1141,5 +1141,63 @@ console.log("\n23. o servidor diz qual IA atendeu");
   }
 }
 
+/* ================= 24. telas escondidas não podem cobrir o app ================= */
+console.log("\n24. o que nasce escondido tem que ficar escondido");
+{
+  /* Armadilha real: `.cam{display:flex}` vence o `display:none` que o navegador
+     aplica pelo atributo `hidden` — regra de autor ganha da regra do navegador,
+     independente de especificidade. O jsdom não reproduz essa cascata, então
+     este bloco confere o CSS escrito, não o calculado. */
+  const { w } = await boot([]);
+  const css = [...w.document.querySelectorAll("style")].map(s => s.textContent).join("\n");
+
+  ok(w.document.getElementById("camera").hasAttribute("hidden"), "a câmera nasce escondida");
+  ok(/\.cam\s*\{[^}]*display\s*:\s*flex/.test(css), "e a tela dela é flex quando aparece");
+  ok(/\.cam\[hidden\]\s*\{[^}]*display\s*:\s*none/.test(css), "com regra explícita para sumir — senão cobre o app desde que abre");
+
+  /* varredura: vale para qualquer tela futura pendurada fora do #app */
+  const foraDoApp = [...w.document.body.children].filter(el => el.hasAttribute("hidden") && el.className);
+  ok(foraDoApp.length > 0, "há telas escondidas fora do #app para conferir");
+  for (const el of foraDoApp) {
+    for (const cls of String(el.className).split(/\s+/).filter(Boolean)) {
+      const mexeNoDisplay = new RegExp("\\." + cls + "\\s*\\{[^}]*display\\s*:").test(css);
+      const desfaz = new RegExp("\\." + cls + "\\[hidden\\]\\s*\\{[^}]*display\\s*:\\s*none").test(css);
+      ok(!mexeNoDisplay || desfaz, "#" + el.id + ": a classe ." + cls + " não anula o hidden");
+    }
+  }
+
+  /* e a tela inicial do app tem que ser o app, não um overlay */
+  eq(w.document.getElementById("camera").hidden, true, "ao abrir o app, a câmera está fechada");
+  eq(w.document.getElementById("toast").hidden, true, "e o aviso também");
+}
+
+/* ================= 25. câmera que abre mas não manda imagem ================= */
+console.log("\n25. câmera que abre mas fica preta");
+{
+  const { w } = await boot([]);
+
+  // a espera pela imagem, medida direto
+  eq(await w.camTemImagem({ videoWidth: 640, videoHeight: 480 }), true, "imagem chegando: segue em frente");
+  eq(await w.camTemImagem({ videoWidth: 0, videoHeight: 0 }, 150), false, "imagem que não vem: desiste em vez de travar");
+  let q = 0;
+  const atrasada = { get videoWidth() { return ++q > 2 ? 1280 : 0; }, get videoHeight() { return q > 2 ? 720 : 0; } };
+  eq(await w.camTemImagem(atrasada, 2000), true, "câmera lenta ainda é esperada");
+
+  // o caminho inteiro: permissão dada, imagem nunca vem
+  const track = { parado: false, stop() { this.parado = true; } };
+  w.navigator.mediaDevices = { getUserMedia: async () => ({ getTracks: () => [track] }) };
+  w.HTMLMediaElement.prototype.play = async function () {};
+  w.HTMLMediaElement.prototype.pause = function () {};
+  w.camTemImagem = async () => false;
+  let usouSistema = 0;
+  w.pickFiles = async () => { usouSistema++; return [{ name: "do-aparelho.jpg", type: "image/jpeg" }]; };
+
+  const fotos = await w.abrirCamera(24);
+  eq(usouSistema, 1, "tela preta cai na câmera do aparelho");
+  eq(fotos.length, 1, "e a foto ainda chega");
+  ok(w.document.getElementById("camera").hidden, "sem deixar a tela preta aberta");
+  eq(track.parado, true, "e desligando a câmera do aparelho");
+}
+
 console.log(`\n${passed} passaram, ${failed} falharam`);
 process.exit(failed ? 1 : 0);
