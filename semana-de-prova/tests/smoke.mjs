@@ -1199,5 +1199,87 @@ console.log("\n25. câmera que abre mas fica preta");
   eq(track.parado, true, "e desligando a câmera do aparelho");
 }
 
+/* ================= 26. o contador de material diz a verdade ================= */
+console.log("\n26. quanto material está guardado, de verdade");
+{
+  const { w, t } = await boot([]);
+  t.ui.form = { name: "Benja", grade: "4º ano" }; t.A.savekid();
+  const k = t.S.kids[0];
+  const prova = (id, m, pg) => { const e = { id, subject: m, date: "2099-12-10", topics: "", pages: pg || "", links: [], content: "", blocks: [], material: null, nPages: 0, misses: [], asked: [] }; k.exams.push(e); return e; };
+  const ing = prova("e1", "Inglês", "4 a 6");
+
+  eq(w.matResumo(ing), null, "sem material, não inventa número");
+
+  // três fotos, que a IA separou em quatro trechos por assunto
+  w.addBlocks(ing, null, [
+    { materia: "Inglês", assunto: "verbo to be", pagina: "4", conceitos: [], conteudo: "I am, you are, he is." },
+    { materia: "Inglês", assunto: "profissões", pagina: "4", conceitos: [], conteudo: "doctor, teacher, driver." },
+    { materia: "Inglês", assunto: "plural", pagina: "5", conceitos: [], conteudo: "Plural com s no fim." },
+    { materia: "Inglês", assunto: "perguntas", pagina: "6", conceitos: [], conteudo: "Do you like it?" },
+  ]);
+  let r = w.matResumo(ing);
+  eq(r.trechos, 4, "conta os trechos guardados, não os arquivos enviados");
+  eq(r.paginas, 3, "e as páginas que eles cobrem");
+  eq(r.texto, "4 trechos · p. 4 a 6", "mostrando as duas coisas de um jeito conferível");
+  eq(ing.nPages, 4, "o campo antigo passa a acompanhar os blocos");
+
+  // ENVIAR AS MESMAS FOTOS DE NOVO NÃO PODE INFLAR O NÚMERO
+  const antes = w.matResumo(ing).texto;
+  const dup = w.addBlocks(ing, null, [
+    { materia: "Inglês", assunto: "verbo to be", pagina: "4", conceitos: [], conteudo: "I am, you are, he is." },
+    { materia: "Inglês", assunto: "plural", pagina: "5", conceitos: [], conteudo: "Plural com s no fim." },
+  ]);
+  eq(dup.added, 0, "material repetido não entra duas vezes");
+  eq(w.matResumo(ing).texto, antes, "e o contador não sobe ao reenviar as mesmas fotos");
+  eq(ing.nPages, 4, "continua sendo 4");
+
+  // material novo sobe o número
+  w.addBlocks(ing, null, [{ materia: "Inglês", assunto: "números", pagina: "7", conceitos: [], conteudo: "one, two, three." }]);
+  eq(w.matResumo(ing).trechos, 5, "material novo sobe o contador");
+  eq(w.matResumo(ing).texto, "5 trechos · p. 4 a 7", "e a faixa de páginas acompanha");
+
+  // sem página anotada, ainda diz quantos trechos
+  const art = prova("e2", "Artes");
+  w.addBlocks(art, null, [{ materia: "Artes", assunto: "cores", pagina: "", conceitos: [], conteudo: "Cores primárias." }]);
+  eq(w.matResumo(art).texto, "1 trecho", "sem página, mostra só os trechos");
+
+  // colar texto conta como trecho, não como página
+  w.addText(art, "Material colado", "O texto que a mãe colou sobre pintura.");
+  eq(w.matResumo(art).trechos, 2, "texto colado também é um trecho");
+
+  // apagar zera de verdade
+  art.blocks = []; art.content = ""; art.nPages = 0;
+  eq(w.matResumo(art), null, "depois de apagar, volta a não ter material");
+}
+
+/* ================= 27. quais provas ainda estão sem material ================= */
+console.log("\n27. onde estão as matérias que faltam");
+{
+  const { w, t } = await boot([]);
+  t.ui.form = { name: "Benja", grade: "4º ano" }; t.A.savekid();
+  const k = t.S.kids[0];
+  const prova = (id, m) => { const e = { id, subject: m, date: "2099-12-10", topics: "", pages: "", links: [], content: "", blocks: [], material: null, nPages: 0, misses: [], asked: [] }; k.exams.push(e); return e; };
+  const ing = prova("e1", "Inglês"); prova("e2", "Espanhol"); prova("e3", "Ciências");
+  w.addBlocks(ing, null, [{ materia: "Inglês", assunto: "verbo to be", pagina: "4", conceitos: [], conteudo: "I am, you are." }]);
+
+  t.ui.tab = "pais"; t.ui.unlocked = true; t.ui.screen = "pprovas"; w.render();
+  let html = w.document.getElementById("app").innerHTML;
+  ok(html.includes("2 de 3 prova(s) ainda sem material"), "diz quantas faltam, sem precisar rolar a lista");
+  ok(html.includes("Espanhol, Ciências"), "e nomeia quais são");
+  ok(html.includes("Cadastrar na m"), "lembrando que dá para cadastrar na mão o que a IA não achou");
+  ok(html.includes("1 trecho"), "a prova que tem material mostra quanto tem");
+  ok(!html.includes("material(is)"), "o contador antigo, que somava arquivos enviados, saiu de cena");
+
+  // quando todas têm material, o aviso vira confirmação
+  k.exams.forEach(e => w.addBlocks(e, null, [{ materia: e.subject, assunto: "x" + e.id, pagina: "9", conceitos: [], conteudo: "Conteúdo de " + e.subject + "." }]));
+  w.render(); html = w.document.getElementById("app").innerHTML;
+  ok(html.includes("Todas as 3 provas j"), "quando não falta nada, ele confirma");
+  ok(!html.includes("ainda sem material"), "sem alarme falso");
+
+  // sem provas, nenhum aviso
+  k.exams.length = 0; w.render();
+  ok(!w.document.getElementById("app").innerHTML.includes("sem material"), "sem provas cadastradas, nada de aviso");
+}
+
 console.log(`\n${passed} passaram, ${failed} falharam`);
 process.exit(failed ? 1 : 0);

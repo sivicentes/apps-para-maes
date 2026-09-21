@@ -752,9 +752,20 @@ function addBlocks(ex, material, blocks) {
     ex.blocks.push({ materia: cutStr(b.materia || ex.subject, 60), assunto, pagina: cutStr(b.pagina, 12), conceitos: (Array.isArray(b.conceitos) ? b.conceitos : []).map(c => cutStr(c, 60)).filter(Boolean).slice(0, 12), texto, hash: h });
     added++;
   }
-  deriveContent(ex); return { added, unreadable };
+  deriveContent(ex); ex.nPages = ex.blocks.length; return { added, unreadable };
 }
 function cov(ex) { try { return coverage(ex); } catch (e) { return null; } }
+/* O que esta guardado de verdade, em unidade que da para conferir na tela
+   "O que a IA entendeu": trechos por assunto e as paginas que eles cobrem.
+   O contador antigo somava arquivos ENVIADOS, entao reenviar as mesmas fotos
+   inflava o numero sem guardar nada novo. */
+function matResumo(ex) {
+  seedBlocks(ex);
+  const n = ex.blocks.length; if (!n) return null;
+  const pgs = new Set(); ex.blocks.forEach(b => pageSet(b.pagina).forEach(x => pgs.add(x)));
+  const lista = [...pgs].sort((a, b) => a - b);
+  return { trechos: n, paginas: lista.length, texto: n + (n === 1 ? " trecho" : " trechos") + (lista.length ? " · p. " + faixas(lista) : "") };
+}
 function matLabel(ex) { const m = ex && ex.material; if (!m) return ""; return MATF.map(k => m[k]).filter(Boolean).join(" \u00b7 "); }
 function addText(ex, titulo, texto) { return addBlocks(ex, null, [{ materia: ex.subject, assunto: titulo, pagina: "", conceitos: [], conteudo: texto }]); }
 
@@ -803,7 +814,7 @@ async function readPages(examId, files) {
       busy("Lendo as p\u00e1ginas de " + ex.subject + "\u2026", "P\u00e1gina " + (i + 1) + (part.length > 1 ? " a " + (i + part.length) : "") + " de " + g.images.length);
       const r = await readChunk(ex, "", part); const a = addBlocks(ex, r.material, r.blocos); added += a.added; unreadable += a.unreadable; count += part.length;
     }
-    ex.nPages = (ex.nPages || 0) + count; ui.files = []; ui.screen = null; save(); idle();
+    ui.files = []; ui.screen = null; save(); idle();   /* nPages vem dos blocos, em addBlocks */
     const mat = matLabel(ex);
     toast(unreadable ? unreadable + " foto(s) ficaram ileg\u00edveis. Tire de novo, com luz e sem cortar a p\u00e1gina." : !added ? "Esse material j\u00e1 estava guardado." : count + " p\u00e1gina(s) lidas!" + (mat ? " Material: " + mat + "." : ""));
   } catch (e) { idle(); if (e.code !== "cancelled") toast(errMsg(e)); }
@@ -820,7 +831,7 @@ async function readVideo(examId, url) {
       { video: "https://www.youtube.com/watch?v=" + id });
     const l = linksOf(ex).find(x => x.url === url); if (l) l.read = true;
     addText(ex, "V\u00cdDEO INDICADO PELA PROFESSORA" + (l && l.label ? " (" + l.label + ")" : ""), t.trim());
-    ex.nPages = (ex.nPages || 0) + 1; save(); idle(); toast("Vídeo lido! Já vale para as explicações e os quizzes.");
+    save(); idle(); toast("Vídeo lido! Já vale para as explicações e os quizzes.");
   } catch (e) { idle(); if (e.code !== "cancelled") toast(errMsg(e)); }
 }
 
@@ -1238,6 +1249,15 @@ function avisoRepetidas() {
     '.</p><p class="small muted">Costuma acontecer quando dois comunicados falam da mesma prova com datas diferentes. Junte numa só escolhendo a data certa, ou apague as sobrando em cada prova.</p>' +
     r.map(x => '<div class="acts"><button class="btn" data-a="juntar" data-m="' + esc(x.materia) + '">🧹 Juntar as ' + x.provas.length + " de " + esc(x.materia) + "</button></div>").join("") + "</div>";
 }
+/* Resumo do que ainda falta, para nao depender de rolar a lista inteira.
+   Responde a pergunta "onde estao as materias que falta colocar material". */
+function avisoSemMaterial() {
+  const k = kid(); if (!k.exams.length) return "";
+  const faltam = k.exams.filter(e => !matResumo(e));
+  if (!faltam.length) return '<div class="note"><p class="small">✅ <b>Todas as ' + k.exams.length + ' provas já têm material.</b></p></div>';
+  return '<div class="note"><p class="small"><b>' + faltam.length + " de " + k.exams.length + ' prova(s) ainda sem material:</b> ' + esc(faltam.map(e => e.subject).join(", ")) + '.</p>' +
+    '<p class="small muted">Toque na prova para enviar as páginas. Falta alguma matéria na lista? Leia o comunicado de novo (ele junta, não duplica) ou use “Cadastrar na mão”.</p></div>';
+}
 function vJuntar() {
   const alvo = String(ui.arg || "").toLowerCase();
   const grupo = repetidas().find(x => x.materia.toLowerCase() === alvo);
@@ -1249,7 +1269,7 @@ function vJuntar() {
     h += '<button class="exam" data-a="juntarok" data-id="' + e.id + '"><div class="row between"><h3 class="grow">' + (validD(e.date) ? esc(nice(e.date)) : "sem data") + '</h3><span class="when">escolher ›</span></div>' +
       (e.topics ? '<p class="small" style="margin:6px 0 0">' + esc(e.topics.slice(0, 120)) + (e.topics.length > 120 ? "…" : "") + "</p>" : '<p class="small muted" style="margin:6px 0 0">sem assuntos anotados</p>') +
       '<div class="chips">' + (e.pages ? '<span class="tag">p. ' + esc(e.pages.slice(0, 30)) + "</span>" : "") +
-      (e.nPages ? '<span class="tag ok">' + e.nPages + " material(is)</span>" : '<span class="tag">sem material</span>') +
+      (matResumo(e) ? '<span class="tag ok">' + esc(matResumo(e).texto) + "</span>" : '<span class="tag">sem material</span>') +
       (ss.length ? '<span class="tag ok">' + ss.length + " parte(s) de roteiro</span>" : "") +
       (linksOf(e).length ? '<span class="tag">' + linksOf(e).length + " link(s)</span>" : "") + "</div></button>";
   });
@@ -1271,7 +1291,8 @@ function juntarEm(idEscolhida) {
     base.links = atuais.slice(0, 8);
     seedBlocks(o); seedBlocks(base);
     const novos = o.blocks.filter(b => !base.blocks.some(x => x.hash === b.hash));
-    if (novos.length) { base.blocks = base.blocks.concat(novos); base.nPages = (base.nPages || 0) + novos.length; deriveContent(base); }
+    if (novos.length) { base.blocks = base.blocks.concat(novos); deriveContent(base); }
+    base.nPages = base.blocks.length;
     if (!base.material && o.material) base.material = o.material;
     base.misses = base.misses.concat(o.misses || []).slice(-20);
     base.asked = base.asked.concat(o.asked || []).slice(-40);
@@ -1290,6 +1311,7 @@ function provasBlock() {
   h += '<div class="acts two"><button class="btn pri" data-a="notice">📄 Ler o comunicado</button><button class="btn" data-a="addexam">＋ Cadastrar na mão</button></div>';
   if (!k.exams.length) return h + '<div class="card"><p class="muted">Envie a foto, o print, o PDF ou o Word que a escola mandou com as datas e conteúdos. Você confere tudo antes de montar o roteiro.</p></div>';
   h += avisoRepetidas();
+  h += avisoSemMaterial();
   h += '<div class="sec">Provas</div>';
   k.exams.forEach(e => {
     const past = validD(e.date) && e.date < t;
@@ -1301,7 +1323,7 @@ function provasBlock() {
       (e.topics ? '<p class="small" style="margin:6px 0 0">' + esc(e.topics.slice(0, 110)) + (e.topics.length > 110 ? "…" : "") + "</p>" : "") +
       '<div class="chips">' +
       (noRot ? '<span class="tag ok">no roteiro</span>' : '<span class="tag">fora do roteiro</span>') +
-      (e.nPages ? '<span class="tag ok">' + e.nPages + " material(is)</span>" : '<span class="tag bad">sem material</span>') +
+      (matResumo(e) ? '<span class="tag ok">' + esc(matResumo(e).texto) + "</span>" : '<span class="tag bad">sem material</span>') +
       (!validD(e.date) ? '<span class="tag bad">falta a data</span>' : "") +
       (c ? '<span class="tag bad">falta p. ' + esc(c.texto.slice(0, 16)) + "</span>" : "") +
       (linksOf(e).length ? '<span class="tag">' + (hasVideo(e) ? "▶️ vídeo" : "🔗 link") + "</span>" : "") +
@@ -1320,7 +1342,9 @@ function vExamDet() {
     (e.pages ? '<p class="small muted" style="margin-top:6px"><b>Estudar:</b> ' + esc(e.pages) + "</p>" : "") +
     (matLabel(e) ? '<p class="small muted">📚 ' + esc(matLabel(e)) + "</p>" : "") + linksHtml(e) +
     '<div class="acts"><button class="btn ghost" data-a="editexam" data-id="' + e.id + '">Editar esta prova</button></div></div>';
-  h += '<div class="card"><h2>Material de estudo</h2><p class="small">' + (e.nPages ? '<span class="tag ok">' + e.nPages + " material(is) guardado(s)</span>" : '<span class="tag bad">nada enviado ainda</span>') + "</p>" +
+  const mr = matResumo(e);
+  h += '<div class="card"><h2>Material de estudo</h2><p class="small">' + (mr ? '<span class="tag ok">' + esc(mr.texto) + "</span>" : '<span class="tag bad">nada enviado ainda</span>') + "</p>" +
+    (mr ? '<p class="small muted">Fica guardado neste aparelho, em texto — as fotos não são salvas. Para ver trecho por trecho, abra <b>O que a IA entendeu</b>.</p>' : "") +
     (c ? '<p class="small" style="color:var(--bad)">⚠️ Falta o material da(s) página(s) <b>' + esc(c.texto) + "</b>. Sem elas, o roteiro e o quiz não cobrem a matéria toda. Se você fotografou duas páginas numa foto só e mesmo assim aparece aqui, o número de uma delas pode não estar legível.</p>" : "") +
     '<div class="acts two"><button class="btn pri" data-a="pages" data-id="' + e.id + '">📷 ' + (e.nPages ? "Enviar mais páginas" : "Tirar foto das páginas") + '</button><button class="btn" data-a="paste" data-id="' + e.id + '">📋 Colar texto</button></div></div>';
   h += '<div class="card"><h2>Roteiro</h2><p class="small">' + (ss.length ? '<span class="tag ok">' + ss.length + " parte(s) · " + ss.filter(s => s.done).length + " feita(s)</span>" : '<span class="tag">ainda não montado</span>') + "</p>" +
@@ -1341,7 +1365,7 @@ function vExamForm() {
   const f = ui.form, isNew = !f.id;
   return '<button class="link" data-a="back">‹ Voltar</button><h1>' + (isNew ? "Nova prova" : "Editar prova") + '</h1><div class="card"><label for="esub">Matéria</label><input id="esub" type="text" maxlength="60" value="' + esc(f.subject || "") + '"><label for="edate">Dia da prova</label><input id="edate" type="date" value="' + esc(f.date || "") + '"><label for="etop">O que cai</label><textarea id="etop" maxlength="800">' + esc(f.topics || "") + '</textarea><label for="epag">Páginas ou materiais para estudar</label><input id="epag" type="text" maxlength="300" value="' + esc(f.pages || "") + '"><label for="elinks">Links que a professora indicou (um por linha)</label><textarea id="elinks" placeholder="https://youtu.be/... Vídeo de verbos">' + esc(f.links || "") + '</textarea><p class="small muted">Cole o endere\u00e7o e, se quiser, escreva depois dele o que \u00e9.</p><h3 style="margin-top:14px">Material de estudo</h3><p class="small muted">A IA preenche sozinha ao ler as p\u00e1ginas. Corrija se estiver errado: \u00e9 isso que permite reaproveitar o conte\u00fado depois.</p><label for="msis">Sistema ou editora</label><input id="msis" type="text" maxlength="60" placeholder="Ex.: Objetivo" value="' + esc(f.msis || "") + '"><label for="mvol">Volume ou caderno</label><input id="mvol" type="text" maxlength="60" placeholder="Ex.: Apostila 2" value="' + esc(f.mvol || "") + '"><label for="medi">Edi\u00e7\u00e3o ou ano</label><input id="medi" type="text" maxlength="60" placeholder="Ex.: 2026" value="' + esc(f.medi || "") + '">' +
     '<div class="btns"><button class="btn pri grow" data-a="saveexam">Salvar prova</button>' + (isNew ? "" : '<button class="btn danger" data-a="delexam">Apagar</button>') + "</div></div>" +
-    (!isNew && f.nPages ? '<div class="card"><p class="small muted">' + f.nPages + ' página(s) lidas para esta prova.</p><button class="btn ghost" data-a="clearpages">Apagar as páginas lidas</button></div>' : "");
+    (!isNew && f.nPages ? '<div class="card"><p class="small muted">' + f.nPages + ' trecho(s) de material guardados para esta prova.</p><button class="btn ghost" data-a="clearpages">Apagar o material lido</button></div>' : "");
 }
 function vSession() {
   const s = sessOf(ui.arg), ex = s && examOf(s.examId); if (!s || !ex) { ui.screen = null; return vHoje(); }
@@ -1637,7 +1661,7 @@ const A = {
   goff() { confirmBox("Desligar a IA e apagar a chave deste aparelho?", () => { G = {}; saveG(); sample = null; }, "Desligar"); },
   planone(d) { const e = examOf(d.id); if (!e) return; return startPlan(e.id); },
   paste(d) { ui.form = {}; ui.arg = d.id; ui.screen = "paste"; window.scrollTo(0, 0); },
-  savepaste() { const e = examOf(ui.arg), t = (ui.form.ptext || "").trim(); if (!e) return; if (t.length < 20) return toast("Cole o texto do material primeiro."); const a = addText(e, "Material colado", t); e.nPages = (e.nPages || 0) + 1; save(); ui.screen = null; ui.form = {}; toast(a.added ? "Material guardado! J\u00e1 vale para as explica\u00e7\u00f5es e os quizzes." : "Esse texto j\u00e1 estava guardado."); },
+  savepaste() { const e = examOf(ui.arg), t = (ui.form.ptext || "").trim(); if (!e) return; if (t.length < 20) return toast("Cole o texto do material primeiro."); const a = addText(e, "Material colado", t); save(); ui.screen = null; ui.form = {}; toast(a.added ? "Material guardado! J\u00e1 vale para as explica\u00e7\u00f5es e os quizzes." : "Esse texto j\u00e1 estava guardado."); },
   plan() { return startPlan(null); },
   open(d) { ui.screen = "session"; ui.arg = d.id; ui.explainLive = ""; window.scrollTo(0, 0); },
   step(d) { const s = sessOf(ui.arg); if (!s) return; const x = s.steps[+d.i]; x.done = !x.done; save(); if (temIA() && s.steps.every(y => y.done) && !s.score) fetchQuiz(s.id).catch(() => {}); },
