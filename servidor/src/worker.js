@@ -56,6 +56,22 @@ function codigoOk(codigo, env) {
   return ok.includes(codigo);
 }
 
+/* Qual modelo funcionou da ultima vez.
+   Sem isto, cada pedido recomeca a lista do zero: se o primeiro modelo nao
+   existir nesta conta, TODA leitura paga uma chamada perdida antes da boa — e
+   numa leitura de paginas essa chamada perdida sobe as fotos de novo, que e o
+   que realmente demora no celular. Guardado por um dia: se o Google publicar
+   um modelo mais novo, o cache expira e a lista e testada outra vez. */
+const LEMBRAR = 60 * 60 * 24;
+async function modeloBom(env, qual) {
+  if (!env.KV) return null;
+  try { return await env.KV.get("modelo:" + qual); } catch (e) { return null; }
+}
+async function guardaModelo(env, qual, modelo) {
+  if (!env.KV || !modelo) return;
+  try { await env.KV.put("modelo:" + qual, modelo, { expirationTtl: LEMBRAR }); } catch (e) {}
+}
+
 /* teto diario por aparelho. Sem KV ligado, nao conta (e avisa na resposta). */
 async function cota(env, codigo, aparelho) {
   if (!env.KV) return { ok: true, semContagem: true };
@@ -124,7 +140,8 @@ function paginaDeStatus(env) {
 async function tentarGroq(p, env) {
   if (!env.GROQ_KEY) return null;
   if (p.video || (Array.isArray(p.fotos) && p.fotos.length)) return null;
-  const candidatos = [...new Set([p.modeloRapido, ...RMODELOS].filter(Boolean))].slice(0, 3);
+  const lembrado = await modeloBom(env, "groq");
+  const candidatos = [...new Set([p.modeloRapido, lembrado, ...RMODELOS].filter(Boolean))].slice(0, 3);
   for (const modelo of candidatos) {
     let r;
     try {
@@ -146,6 +163,7 @@ async function tentarGroq(p, env) {
       const texto = String((c && c.message && c.message.content) || "").trim();
       /* cortado ou em branco: o Gemini tem mais folego, deixa com ele */
       if (!texto || (c && c.finish_reason === "length")) return null;
+      if (modelo !== lembrado) await guardaModelo(env, "groq", modelo);
       return { texto, modelo };
     }
     /* modelo aposentado ou minuto cheio: tenta o proximo da lista */
@@ -185,7 +203,8 @@ export default {
     if (!env.GEMINI_KEY) return resp({ erro: "sem_chave", mensagem: "O servidor so tem a chave rapida, que nao le foto nem video." }, 500, origem, env);
 
     const base = montarPedido(p);
-    const candidatos = [...new Set([p.modelo, ...MODELOS].filter(Boolean))].slice(0, 4);
+    const lembrado = await modeloBom(env, "gemini");
+    const candidatos = [...new Set([p.modelo, lembrado, ...MODELOS].filter(Boolean))].slice(0, 4);
     let ultimo = { erro: "upstream" };
 
     for (const modelo of candidatos) {
@@ -209,6 +228,7 @@ export default {
           const bloqueio = (d.promptFeedback && d.promptFeedback.blockReason) || /SAFETY|PROHIBITED|BLOCK/.test(fim);
           return resp({ erro: bloqueio ? "recusado" : "vazio_ia" }, 200, origem, env);
         }
+        if (modelo !== lembrado) await guardaModelo(env, "gemini", modelo);
         return resp({ texto, modelo, ia: "gemini", usado: c.usado, teto: c.teto, semContagem: c.semContagem }, 200, origem, env);
       }
 

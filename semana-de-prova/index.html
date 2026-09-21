@@ -783,6 +783,8 @@ function pagesPromptJSON(ex, extraText) {
     "Responda SOMENTE com JSON: {\"material\":{\"sistema\":\"\",\"volume\":\"\",\"edicao\":\"\",\"serie\":\"\"},\"blocos\":[{\"materia\":\"\",\"assunto\":\"\",\"pagina\":\"\",\"conceitos\":[\"\"],\"conteudo\":\"\"}]}" +
     (extraText ? "\n\nTEXTO:\n" + extraText.slice(0, 40000) : "");
 }
+/* so estes erros melhoram numa segunda tentativa: sao de formato de resposta */
+const REFAZER = ["invalid_json", "empty_completion", "srv_vazio_ia"];
 /* tenta o formato estruturado; se falhar, cai no texto corrido de antes (sem regressao) */
 async function readChunk(ex, extraText, images) {
   const opts = images && images.length ? { images } : {};
@@ -792,7 +794,11 @@ async function readChunk(ex, extraText, images) {
     if (!blocos.length) throw { code: "invalid_json" };
     return { material: (r && r.material) || null, blocos };
   } catch (e) {
-    if (e.code === "cancelled") throw e;
+    /* a segunda tentativa reenvia as fotos inteiras, que no celular e o que
+       mais demora. So vale a pena quando o problema foi o FORMATO da resposta:
+       cota estourada, codigo recusado ou material grande demais nao melhoram
+       tentando de novo, entao o erro sobe na hora. */
+    if (!REFAZER.includes(String((e && e.code) || ""))) throw e;
     const t = await askText(pagesPrompt(ex, extraText), opts);
     return { material: null, blocos: [{ materia: ex.subject, assunto: "", pagina: "", conceitos: [], conteudo: t }] };
   }

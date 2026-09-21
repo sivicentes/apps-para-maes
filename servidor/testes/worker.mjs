@@ -294,6 +294,54 @@ console.log("\n9. quem abre o endereco no navegador");
   eq(chamadas.length, 0, "e nada disso chega perto da IA");
 }
 
+console.log("\n10. o servidor lembra o modelo que funcionou");
+{
+  const KV = kvFalso();
+  const FOTO = { tipo: "image/jpeg", dados: "AAAA" };
+
+  // primeiro pedido: o modelo mais novo nao existe nesta conta
+  geminiFalso(u => u.includes("gemini-3.8-flash") ? jsonErro(404, "model not found") : RESP("li as paginas"));
+  let r = await worker.fetch(pedido({ ...CORPO, fotos: [FOTO] }), ENV({ KV }));
+  eq((await r.json()).modelo, "gemini-3.5-flash", "cai para o modelo seguinte");
+  eq(chamadas.length, 2, "pagando uma chamada perdida, com as fotos junto");
+  eq(await KV.get("modelo:gemini"), "gemini-3.5-flash", "e guarda qual funcionou");
+
+  // segundo pedido: vai direto no que funcionou
+  geminiFalso(u => u.includes("gemini-3.8-flash") ? jsonErro(404, "model not found") : RESP("li as paginas"));
+  r = await worker.fetch(pedido({ ...CORPO, fotos: [FOTO] }), ENV({ KV }));
+  eq((await r.json()).texto, "li as paginas", "responde igual");
+  eq(chamadas.length, 1, "mas agora sem chamada perdida: as fotos sobem uma vez so");
+  eq(chamadas[0].url.includes("gemini-3.5-flash"), true, "indo direto no modelo lembrado");
+
+  // se o lembrado parar de funcionar, ele busca outro e troca a memoria
+  geminiFalso(u => /gemini-3\.8-flash|gemini-3\.5-flash/.test(u) ? jsonErro(404, "gone") : RESP("veio do terceiro"));
+  r = await worker.fetch(pedido(CORPO), ENV({ KV }));
+  eq((await r.json()).texto, "veio do terceiro", "modelo aposentado nao trava o servidor");
+  eq(await KV.get("modelo:gemini"), "gemini-flash-latest", "e a memoria passa a apontar para o novo");
+
+  // a IA rapida tem memoria propria
+  const KV2 = kvFalso(), GROQ = "CHAVE-RAPIDA";
+  let n = 0;
+  chamadas = [];
+  globalThis.fetch = async (url, opts) => {
+    const u = String(url); chamadas.push({ url: u, body: JSON.parse(opts.body) });
+    if (!u.includes("groq.com")) return RESP("gemini");
+    return ++n === 1 ? jsonErro(404, "decommissioned") : jsonOk({ choices: [{ message: { content: "ok rapido" }, finish_reason: "stop" }] });
+  };
+  r = await worker.fetch(pedido(CORPO), ENV({ KV: KV2, GROQ_KEY: GROQ }));
+  eq((await r.json()).ia, "groq", "a IA rapida respondeu");
+  const lembradoR = await KV2.get("modelo:groq");
+  ok(!!lembradoR && lembradoR !== "llama-3.3-70b-versatile", "guardou o modelo rapido que funcionou");
+  const antes = chamadas.length;
+  await worker.fetch(pedido(CORPO), ENV({ KV: KV2, GROQ_KEY: GROQ }));
+  eq(chamadas.length - antes, 1, "e o pedido seguinte vai direto nele");
+
+  // sem KV ligado, tudo continua funcionando (so sem a memoria)
+  geminiFalso(u => u.includes("gemini-3.8-flash") ? jsonErro(404, "x") : RESP("sem kv tambem vai"));
+  r = await worker.fetch(pedido(CORPO), ENV());
+  eq((await r.json()).texto, "sem kv tambem vai", "sem KV o servidor nao quebra");
+}
+
 globalThis.fetch = real;
 console.log(`\n${passou} passaram, ${falhou} falharam`);
 process.exit(falhou ? 1 : 0);

@@ -1281,5 +1281,55 @@ console.log("\n27. onde estão as matérias que faltam");
   ok(!w.document.getElementById("app").innerHTML.includes("sem material"), "sem provas cadastradas, nada de aviso");
 }
 
+/* ================= 28. não reenviar fotos à toa ================= */
+console.log("\n28. a segunda tentativa só quando adianta");
+{
+  const { w, t } = await boot([]);
+  t.ui.form = { name: "Benja", grade: "4º ano" }; t.A.savekid();
+  const ex = { id: "e1", subject: "Inglês", date: "2099-12-10", topics: "", pages: "4 a 6", links: [], content: "", blocks: [], material: null, nPages: 0, misses: [], asked: [] };
+  t.S.kids[0].exams.push(ex);
+
+  const monta = (jsonFaz, textoFaz) => {
+    const n = { json: 0, texto: 0 };
+    w.askJSON = async () => { n.json++; return jsonFaz(); };
+    w.askText = async () => { n.texto++; return textoFaz ? textoFaz() : "texto corrido"; };
+    return n;
+  };
+  const FOTOS = [{ type: "image/jpeg" }, { type: "image/jpeg" }, { type: "image/jpeg" }];
+
+  // caminho feliz: uma chamada só
+  let n = monta(() => ({ material: null, blocos: [{ materia: "Inglês", assunto: "to be", pagina: "4", conceitos: [], conteudo: "I am." }] }));
+  let r = await w.readChunk(ex, "", FOTOS);
+  eq(n.json, 1, "leitura normal: uma chamada");
+  eq(n.texto, 0, "sem reenviar as fotos");
+  eq(r.blocos.length, 1, "e traz o bloco lido");
+
+  // resposta fora do formato: aí vale tentar de novo
+  n = monta(() => { throw { code: "invalid_json" }; });
+  r = await w.readChunk(ex, "", FOTOS);
+  eq(n.texto, 1, "resposta fora do formato: tenta uma segunda vez");
+  ok(r.blocos[0].conteudo.includes("texto corrido"), "e aproveita o que veio");
+
+  n = monta(() => { throw { code: "empty_completion" }; });
+  await w.readChunk(ex, "", FOTOS);
+  eq(n.texto, 1, "resposta em branco também merece segunda tentativa");
+
+  // erros que repetir não conserta: sobem na hora, sem reenviar 3 fotos
+  for (const code of ["srv_cota", "srv_codigo", "truncated", "prompt_too_large", "offline", "srv_chave_servidor"]) {
+    n = monta(() => { throw { code }; });
+    let subiu = null;
+    try { await w.readChunk(ex, "", FOTOS); } catch (e) { subiu = e.code; }
+    eq(subiu, code, code + ": o erro sobe na hora");
+    eq(n.texto, 0, code + ": sem reenviar as fotos à toa");
+  }
+
+  // cancelar continua cancelando
+  n = monta(() => { throw { code: "cancelled" }; });
+  let subiu = null;
+  try { await w.readChunk(ex, "", FOTOS); } catch (e) { subiu = e.code; }
+  eq(subiu, "cancelled", "cancelar interrompe mesmo");
+  eq(n.texto, 0, "sem começar outra leitura");
+}
+
 console.log(`\n${passed} passaram, ${failed} falharam`);
 process.exit(failed ? 1 : 0);
