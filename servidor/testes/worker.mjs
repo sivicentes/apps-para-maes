@@ -302,22 +302,22 @@ console.log("\n10. o servidor lembra o modelo que funcionou");
   // primeiro pedido: o modelo mais novo nao existe nesta conta
   geminiFalso(u => u.includes("gemini-3.8-flash") ? jsonErro(404, "model not found") : RESP("li as paginas"));
   let r = await worker.fetch(pedido({ ...CORPO, fotos: [FOTO] }), ENV({ KV }));
-  eq((await r.json()).modelo, "gemini-3.5-flash", "cai para o modelo seguinte");
+  eq((await r.json()).modelo, "gemini-3.7-flash", "cai para o modelo seguinte");
   eq(chamadas.length, 2, "pagando uma chamada perdida, com as fotos junto");
-  eq(await KV.get("modelo:gemini"), "gemini-3.5-flash", "e guarda qual funcionou");
+  eq(await KV.get("modelo:gemini"), "gemini-3.7-flash", "e guarda qual funcionou");
 
   // segundo pedido: vai direto no que funcionou
   geminiFalso(u => u.includes("gemini-3.8-flash") ? jsonErro(404, "model not found") : RESP("li as paginas"));
   r = await worker.fetch(pedido({ ...CORPO, fotos: [FOTO] }), ENV({ KV }));
   eq((await r.json()).texto, "li as paginas", "responde igual");
   eq(chamadas.length, 1, "mas agora sem chamada perdida: as fotos sobem uma vez so");
-  eq(chamadas[0].url.includes("gemini-3.5-flash"), true, "indo direto no modelo lembrado");
+  eq(chamadas[0].url.includes("gemini-3.7-flash"), true, "indo direto no modelo lembrado");
 
   // se o lembrado parar de funcionar, ele busca outro e troca a memoria
-  geminiFalso(u => /gemini-3\.8-flash|gemini-3\.5-flash/.test(u) ? jsonErro(404, "gone") : RESP("veio do terceiro"));
+  geminiFalso(u => /gemini-3\.8-flash|gemini-3\.7-flash/.test(u) ? jsonErro(404, "gone") : RESP("veio do terceiro"));
   r = await worker.fetch(pedido(CORPO), ENV({ KV }));
   eq((await r.json()).texto, "veio do terceiro", "modelo aposentado nao trava o servidor");
-  eq(await KV.get("modelo:gemini"), "gemini-flash-latest", "e a memoria passa a apontar para o novo");
+  eq(await KV.get("modelo:gemini"), "gemini-3.6-flash", "e a memoria passa a apontar para o novo");
 
   // a IA rapida tem memoria propria
   const KV2 = kvFalso(), GROQ = "CHAVE-RAPIDA";
@@ -426,6 +426,29 @@ console.log("\n11. modelo que bateu no teto do Google fica de castigo");
     const r = await worker.fetch(pedido(CORPO), ENV());
     eq((await r.json()).texto, "sem kv tambem vai", "sem KV o servidor nao quebra");
   }
+}
+
+console.log("\n12. a lista de modelos cobre a familia Flash inteira");
+{
+  /* cada modelo tem cota propria (20/dia no gratuito): faltar um na lista e
+     perder um dia inteiro de uso enquanto ele ainda tinha pedidos sobrando */
+  const tentados = [];
+  chamadas = [];
+  globalThis.fetch = async url => { const u = String(url); tentados.push(u); chamadas.push({ url: u }); return jsonErro(404, "model not found"); };
+  await worker.fetch(pedido(CORPO), ENV());
+  for (const m of ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash"])
+    ok(tentados.some(u => u.includes(m)), "tenta o " + m);
+
+  // com os mais novos de castigo, chega nos outros
+  const KV = kvFalso();
+  const cheio = "You exceeded your current quota: 20 requests per day per model";
+  geminiFalso(u => /3\.8|3\.7/.test(u) ? { ok: false, status: 429, json: async () => ({ error: { message: cheio } }) } : RESP("o 3.6 ainda tinha cota"));
+  let r = await worker.fetch(pedido(CORPO), ENV({ KV }));
+  eq((await r.json()).modelo, "gemini-3.6-flash", "usa o modelo que ainda tem cota do dia");
+
+  geminiFalso(u => /3\.8|3\.7/.test(u) ? { ok: false, status: 429, json: async () => ({ error: { message: cheio } }) } : RESP("o 3.6 ainda tinha cota"));
+  r = await worker.fetch(pedido(CORPO), ENV({ KV }));
+  eq(chamadas.length, 1, "e no pedido seguinte vai direto nele, sem reexperimentar os esgotados");
 }
 
 globalThis.fetch = real;

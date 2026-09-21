@@ -17,7 +17,12 @@
  */
 
 const GAPI = "https://generativelanguage.googleapis.com/v1beta/models/";
-const MODELOS = ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-flash-latest", "gemini-2.5-flash"];
+/* Toda a familia Flash que a conta pode ter. Cada modelo tem cota propria no
+   nivel gratuito (20 pedidos/dia cada), entao faltar um da lista e perder um
+   dia inteiro de uso: com 3.7 e 3.6 de fora, o app parava enquanto eles ainda
+   tinham pedidos sobrando. Modelo que a conta nao tem responde 404 e sai da
+   frente sozinho, sem custo. */
+const MODELOS = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-flash-latest", "gemini-2.5-flash"];
 
 /* segunda IA: so texto, e bem mais rapida. Roteiro, explicacao e quiz
    passam por aqui quando a GROQ_KEY estiver configurada. */
@@ -236,7 +241,7 @@ export default {
     const base = montarPedido(p);
     const lembrado = await modeloBom(env, "gemini");
     const parados = await descansos(env);
-    const candidatos = ordemPorDescanso([...new Set([p.modelo, lembrado, ...MODELOS].filter(Boolean))], parados).slice(0, 4);
+    const candidatos = ordemPorDescanso([...new Set([p.modelo, lembrado, ...MODELOS].filter(Boolean))], parados).slice(0, 5);
     let ultimo = { erro: "upstream" };
 
     for (const modelo of candidatos) {
